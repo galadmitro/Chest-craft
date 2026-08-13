@@ -17,7 +17,7 @@ import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 @EventBusSubscriber(modid = "examplemod", value = Dist.CLIENT)
 public class ClientModEvents {
 
-    // Trigger lock-in when player joins world
+    // Trigger 2D screen lock-in when player enters world
     @SubscribeEvent
     public static void onEntityJoinWorld(EntityJoinLevelEvent event) {
         Minecraft mc = Minecraft.getInstance();
@@ -31,19 +31,18 @@ public class ClientModEvents {
         }
     }
 
-    // Enforce minigame screen every tick (unless in Pause Menu)
+    // Lock-in check per tick (allows PauseScreen to stay open when ESC is pressed)
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null && mc.level != null) {
             mc.getTutorial().setStep(TutorialSteps.NONE);
 
-            // Re-open 2D screen if not currently in PauseScreen or LockIn2DScreen
             if (!(mc.screen instanceof LockIn2DScreen) && !(mc.screen instanceof PauseScreen)) {
                 mc.setScreen(new LockIn2DScreen());
             }
 
-            // Make mobs in the 3D world stop targeting client player
+            // MOB TARGETING IMMUNITY: Strip target status from any mob targeting player
             for (Entity entity : mc.level.entitiesForRendering()) {
                 if (entity instanceof Mob mob && mob.getTarget() == mc.player) {
                     mob.setTarget(null);
@@ -52,7 +51,7 @@ public class ClientModEvents {
         }
     }
 
-    // Intercept inventory/external screen openings
+    // Intercept standard inventory/container screen openings
     @SubscribeEvent
     public static void onScreenOpening(ScreenEvent.Opening event) {
         if (!(event.getNewScreen() instanceof LockIn2DScreen) && !(event.getNewScreen() instanceof PauseScreen)) {
@@ -63,7 +62,7 @@ public class ClientModEvents {
         }
     }
 
-    // MUTE SOUNDS: Silence real world audio while in 2D minigame
+    // DEAFNESS: Mute all real-world sounds while in the 2D minigame
     @SubscribeEvent
     public static void onPlaySound(PlaySoundEvent event) {
         Minecraft mc = Minecraft.getInstance();
@@ -72,7 +71,7 @@ public class ClientModEvents {
         }
     }
 
-    // DAMAGE IMMUNITY: Cancel all incoming damage
+    // IMMUNITY: Prevent player from taking damage
     @SubscribeEvent
     public static void onLivingIncomingDamage(LivingIncomingDamageEvent event) {
         Minecraft mc = Minecraft.getInstance();
