@@ -15,16 +15,16 @@ import org.lwjgl.glfw.GLFW;
 
 public class LockIn2DScreen extends Screen {
     // Textures
-    private static final ResourceLocation DIRT_TEXTURE = ResourceLocation.withDefaultNamespace("textures/block/dirt.png");
-    private static final ResourceLocation CHEST_GUI_TEXTURE = ResourceLocation.withDefaultNamespace("textures/gui/container/generic_54.png");
+    public static final ResourceLocation DIRT_TEXTURE = ResourceLocation.withDefaultNamespace("textures/block/dirt.png");
+    public static final ResourceLocation CHEST_GUI_TEXTURE = ResourceLocation.withDefaultNamespace("textures/gui/container/generic_54.png");
 
     // Exact Vanilla Double Chest Dimensions (1:1 Unscaled)
-    private static final int CHEST_W = 176;
-    private static final int CHEST_H = 222;
+    public static final int CHEST_W = 176;
+    public static final int CHEST_H = 222;
 
     // 2D Physics & Player Coordinates
-    private float playerX = 0;
-    private float playerY = 0;
+    public static float playerX = 0;
+    public static float playerY = 0;
     private float velocityX = 0;
     private float velocityY = 0;
     private boolean isOnGround = false;
@@ -48,19 +48,20 @@ public class LockIn2DScreen extends Screen {
     protected void init() {
         super.init();
 
-        // 1. Disable Tutorial Toasts & Pause 3D World Sound Engine
+        // Disable Tutorial Toasts & Pause 3D World Sound Engine
         if (this.minecraft != null) {
             this.minecraft.getTutorial().setStep(TutorialSteps.NONE);
             this.minecraft.getSoundManager().pause();
+            this.minecraft.options.menuBackgroundBlurriness().set(0);
         }
 
         // Center player on top of grass in the top chest grid initially
         int guiX = (this.width - CHEST_W) / 2;
         int guiY = (this.height - CHEST_H) / 2;
 
-        if (this.playerX == 0 && this.playerY == 0) {
-            this.playerX = guiX + (CHEST_W / 2.0f);
-            this.playerY = guiY + 108.0f; // Directly on top of row 6 grass blocks
+        if (playerX == 0 && playerY == 0) {
+            playerX = guiX + (CHEST_W / 2.0f);
+            playerY = guiY + 108.0f; // Directly on top of row 6 grass blocks
         }
     }
 
@@ -86,12 +87,14 @@ public class LockIn2DScreen extends Screen {
     public void tick() {
         super.tick();
 
-        // Keep player invulnerable & fed in background world
-        if (this.minecraft != null && this.minecraft.player != null) {
-            LocalPlayer p = this.minecraft.player;
-            p.getAbilities().invulnerable = true;
-            p.setHealth(p.getMaxHealth());
-            p.getFoodData().setFoodLevel(20);
+        if (this.minecraft != null) {
+            this.minecraft.options.menuBackgroundBlurriness().set(0);
+            if (this.minecraft.player != null) {
+                LocalPlayer p = this.minecraft.player;
+                p.getAbilities().invulnerable = true;
+                p.setHealth(p.getMaxHealth());
+                p.getFoodData().setFoodLevel(20);
+            }
         }
 
         updatePhysics();
@@ -132,7 +135,7 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Pressing ESC opens standard Pause Menu
+        // Pressing ESC opens standard Pause Menu while keeping 2D scene background
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             if (this.minecraft != null) {
                 this.minecraft.setScreen(new PauseScreen(true));
@@ -175,29 +178,52 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // 1. Crisp Unblurred Tiled Dirt Background
-        renderSharpDirtBackground(guiGraphics);
+        // Kill shaders / blur
+        if (this.minecraft != null && this.minecraft.gameRenderer != null) {
+            this.minecraft.gameRenderer.shutdownEffect();
+        }
 
-        int guiX = (this.width - CHEST_W) / 2;
-        int guiY = (this.height - CHEST_H) / 2;
+        // Render full 2D scene
+        render2DScene(guiGraphics, this.width, this.height, mouseX, mouseY);
+
+        super.render(guiGraphics, mouseX, mouseY, partialTick);
+    }
+
+    // Static helper method so PauseScreen can draw the 2D scene behind Pause buttons
+    public static void render2DScene(GuiGraphics guiGraphics, int screenWidth, int screenHeight, int mouseX, int mouseY) {
+        // 1. Crisp Unblurred Tiled Dirt Background
+        int tileSize = 16;
+        for (int x = 0; x < screenWidth; x += tileSize) {
+            for (int y = 0; y < screenHeight; y += tileSize) {
+                guiGraphics.blit(DIRT_TEXTURE, x, y, 0, 0, tileSize, tileSize, tileSize, tileSize);
+            }
+        }
+
+        int guiX = (screenWidth - CHEST_W) / 2;
+        int guiY = (screenHeight - CHEST_H) / 2;
 
         // 2. Pixel-Perfect Crisp Vanilla Chest GUI
         guiGraphics.blit(CHEST_GUI_TEXTURE, guiX, guiY, 0, 0, CHEST_W, CHEST_H, 256, 256);
 
         // 3. Grass Blocks at Row 6 of Top Chest Grid
-        renderGrassFloorInTopGrid(guiGraphics, guiX, guiY);
+        ItemStack grassStack = new ItemStack(Items.GRASS_BLOCK);
+        int startX = guiX + 8;
+        int floorY = guiY + 108; // Row 6 slot position
+        for (int i = 0; i < 9; i++) {
+            guiGraphics.renderItem(grassStack, startX + (i * 18), floorY);
+        }
 
-        // 4. Render 3D Player Model Standing ON Grass with Smooth Cursor Eye Tracking
+        // 4. Render 3D Player Model Standing ON Grass with Centered Head Tracking
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
             int intX = Math.round(playerX);
             int intY = Math.round(playerY);
 
-            // Centered bounding box relative to player position
-            int x1 = intX - 20;
-            int y1 = intY - 38;
-            int x2 = intX + 20;
-            int y2 = intY;
+            // Bounding box centered exactly around player eye height
+            int x1 = intX - 30;
+            int y1 = intY - 48;
+            int x2 = intX + 30;
+            int y2 = intY - 4;
 
             InventoryScreen.renderEntityInInventoryFollowsMouse(
                     guiGraphics,
@@ -207,27 +233,6 @@ public class LockIn2DScreen extends Screen {
                     (float) mouseX, (float) mouseY,
                     player
             );
-        }
-
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
-    }
-
-    private void renderSharpDirtBackground(GuiGraphics guiGraphics) {
-        int tileSize = 16;
-        for (int x = 0; x < this.width; x += tileSize) {
-            for (int y = 0; y < this.height; y += tileSize) {
-                guiGraphics.blit(DIRT_TEXTURE, x, y, 0, 0, tileSize, tileSize, tileSize, tileSize);
-            }
-        }
-    }
-
-    private void renderGrassFloorInTopGrid(GuiGraphics guiGraphics, int guiX, int guiY) {
-        ItemStack grassStack = new ItemStack(Items.GRASS_BLOCK);
-        int startX = guiX + 8;
-        int floorY = guiY + 108; // Row 6 slot position
-
-        for (int i = 0; i < 9; i++) {
-            guiGraphics.renderItem(grassStack, startX + (i * 18), floorY);
         }
     }
 }
