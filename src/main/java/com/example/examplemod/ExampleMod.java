@@ -20,10 +20,7 @@ public class ExampleMod {
     );
 
     public ExampleMod(ModContainer modContainer, IEventBus modBus) {
-        // Register Client Config for Mods -> Configure menu
         modContainer.registerConfig(ModConfig.Type.CLIENT, Config.SPEC);
-
-        // Clean Mod Bus registration (fixes deprecation warnings)
         modBus.addListener(this::registerKeyMappings);
     }
 

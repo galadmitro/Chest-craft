@@ -42,12 +42,10 @@ public class ClientModEvents {
                 mc.gameRenderer.shutdownEffect();
             }
 
-            // Only enforce 2D minigame screen if in-game with no screen open
             if (mc.screen == null) {
                 mc.setScreen(new LockIn2DScreen());
             }
 
-            // MOB TARGETING IMMUNITY
             for (Entity entity : mc.level.entitiesForRendering()) {
                 if (entity instanceof Mob mob && mob.getTarget() == mc.player) {
                     mob.setTarget(null);
@@ -56,7 +54,6 @@ public class ClientModEvents {
         }
     }
 
-    // Exact 6-argument matching call to render2DScene
     @SubscribeEvent
     public static void onScreenRenderPre(ScreenEvent.Render.Pre event) {
         Minecraft mc = Minecraft.getInstance();
