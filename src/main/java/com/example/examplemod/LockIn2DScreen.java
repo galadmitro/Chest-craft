@@ -28,7 +28,7 @@ public class LockIn2DScreen extends Screen {
     private float velocityY = 0;
     private boolean isOnGround = false;
 
-    // Movement Physics (Tuned for 1x Pixel Grid)
+    // Movement Physics
     private static final float GRAVITY = 0.6f;
     private static final float JUMP_STRENGTH = -8.5f;
     private static final float MOVE_SPEED = 2.5f;
@@ -47,20 +47,19 @@ public class LockIn2DScreen extends Screen {
     protected void init() {
         super.init();
 
-        // 1. Disable Tutorial Toasts
+        // 1. Disable Tutorial Toasts & Pause sound engine
         if (this.minecraft != null) {
             this.minecraft.getTutorial().setStep(TutorialSteps.NONE);
-            // 2. Mute world background sound
             this.minecraft.getSoundManager().pause();
         }
 
-        // Center player inside the TOP CHEST GRID initially
+        // Center player on top of grass in the top chest grid initially
         int guiX = (this.width - CHEST_W) / 2;
         int guiY = (this.height - CHEST_H) / 2;
 
         if (this.playerX == 0 && this.playerY == 0) {
             this.playerX = guiX + (CHEST_W / 2.0f);
-            this.playerY = guiY + 125.0f; // Bottom of top chest grid
+            this.playerY = guiY + 108.0f; // Exactly on top of row 6 grass blocks
         }
     }
 
@@ -115,14 +114,14 @@ public class LockIn2DScreen extends Screen {
         playerX += velocityX;
         playerY += velocityY;
 
-        // Strict constraints: Left and Right walls of top chest grid
+        // Left and Right boundaries of top chest grid
         float minX = guiX + 16;
         float maxX = guiX + CHEST_W - 16;
         if (playerX < minX) playerX = minX;
         if (playerX > maxX) playerX = maxX;
 
-        // Floor: Bottom boundary of the TOP chest grid (Row 6)
-        float floorY = guiY + 125;
+        // Floor Boundary: Directly on top of grass blocks in Row 6 (y = 108)
+        float floorY = guiY + 108.0f;
         if (playerY >= floorY) {
             playerY = floorY;
             velocityY = 0;
@@ -132,7 +131,6 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Prevent closing via ESC / E
         if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_E) {
             return true;
         }
@@ -172,27 +170,28 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // 1. Background Dirt
-        renderDirtBackground(guiGraphics);
+        // 1. Render Crisp Unblurred Tiled Dirt Background
+        renderSharpDirtBackground(guiGraphics);
 
         int guiX = (this.width - CHEST_W) / 2;
         int guiY = (this.height - CHEST_H) / 2;
 
-        // 2. Pixel-Perfect Crisp Vanilla Chest GUI (1:1 Unscaled)
+        // 2. Pixel-Perfect Crisp Vanilla Chest GUI
         guiGraphics.blit(CHEST_GUI_TEXTURE, guiX, guiY, 0, 0, CHEST_W, CHEST_H, 256, 256);
 
-        // 3. Grass Blocks at the bottom of TOP CHEST GRID
+        // 3. Grass Blocks at Row 6 of Top Chest Grid
         renderGrassFloorInTopGrid(guiGraphics, guiX, guiY);
 
-        // 4. Player inside TOP CHEST GRID
+        // 4. Render 3D Player Model Standing ON Grass with Proper Cursor Looking
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
             int intX = Math.round(playerX);
             int intY = Math.round(playerY);
 
-            int x1 = intX - 12;
-            int y1 = intY - 28;
-            int x2 = intX + 12;
+            // Bounding box centered on the player for smooth mouse head tracking
+            int x1 = intX - 15;
+            int y1 = intY - 32;
+            int x2 = intX + 15;
             int y2 = intY;
 
             InventoryScreen.renderEntityInInventoryFollowsMouse(
@@ -208,7 +207,7 @@ public class LockIn2DScreen extends Screen {
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
 
-    private void renderDirtBackground(GuiGraphics guiGraphics) {
+    private void renderSharpDirtBackground(GuiGraphics guiGraphics) {
         int tileSize = 16;
         for (int x = 0; x < this.width; x += tileSize) {
             for (int y = 0; y < this.height; y += tileSize) {
@@ -220,7 +219,7 @@ public class LockIn2DScreen extends Screen {
     private void renderGrassFloorInTopGrid(GuiGraphics guiGraphics, int guiX, int guiY) {
         ItemStack grassStack = new ItemStack(Items.GRASS_BLOCK);
         int startX = guiX + 8;
-        int floorY = guiY + 109; // Row 6 of top grid
+        int floorY = guiY + 108; // Row 6 slot position
 
         for (int i = 0; i < 9; i++) {
             guiGraphics.renderItem(grassStack, startX + (i * 18), floorY);
