@@ -24,7 +24,7 @@ public class ClientModEvents {
             mc.execute(() -> {
                 mc.getTutorial().setStep(TutorialSteps.NONE);
                 mc.options.menuBackgroundBlurriness().set(0);
-                if (!(mc.screen instanceof LockIn2DScreen)) {
+                if (mc.screen == null) {
                     mc.setScreen(new LockIn2DScreen());
                 }
             });
@@ -42,10 +42,12 @@ public class ClientModEvents {
                 mc.gameRenderer.shutdownEffect();
             }
 
-            if (!(mc.screen instanceof LockIn2DScreen) && !(mc.screen instanceof PauseScreen)) {
+            // ONLY enforce 2D minigame screen if in-game with no screen open
+            if (mc.screen == null) {
                 mc.setScreen(new LockIn2DScreen());
             }
 
+            // MOB TARGETING IMMUNITY
             for (Entity entity : mc.level.entitiesForRendering()) {
                 if (entity instanceof Mob mob && mob.getTarget() == mc.player) {
                     mob.setTarget(null);
@@ -54,16 +56,7 @@ public class ClientModEvents {
         }
     }
 
-    @SubscribeEvent
-    public static void onScreenOpening(ScreenEvent.Opening event) {
-        if (!(event.getNewScreen() instanceof LockIn2DScreen) && !(event.getNewScreen() instanceof PauseScreen)) {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.player != null && mc.level != null) {
-                event.setNewScreen(new LockIn2DScreen());
-            }
-        }
-    }
-
+    // Render 2D Chest background behind PauseScreen without stealing focus from sub-menus
     @SubscribeEvent
     public static void onScreenRenderPre(ScreenEvent.Render.Pre event) {
         Minecraft mc = Minecraft.getInstance();
@@ -77,7 +70,8 @@ public class ClientModEvents {
                     event.getScreen().width,
                     event.getScreen().height,
                     event.getMouseX(),
-                    event.getMouseY()
+                    event.getMouseY(),
+                    event.getPartialTick()
             );
         }
     }
