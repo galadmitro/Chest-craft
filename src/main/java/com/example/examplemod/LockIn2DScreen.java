@@ -5,6 +5,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.tutorial.TutorialSteps;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -25,14 +26,19 @@ public class LockIn2DScreen extends Screen {
 
     // Movement Physics Configuration
     private static final float GRAVITY = 0.8f;
-    private static final float JUMP_STRENGTH = -12.0f;
-    private static final float MOVE_SPEED = 4.0f;
-    private static final int PLAYER_SCALE = 30;
+    private static final float JUMP_STRENGTH = -11.0f;
+    private static final float MOVE_SPEED = 3.5f;
+    private static final int PLAYER_SCALE = 22;
 
     // Key States
     private boolean keyLeft = false;
     private boolean keyRight = false;
     private boolean keyJump = false;
+
+    // Chest Frame Dimensions (2x Scaled)
+    private static final int CHEST_TEX_W = 176;
+    private static final int CHEST_TEX_H = 166;
+    private static final float GUI_SCALE = 2.0f;
 
     public LockIn2DScreen() {
         super(Component.literal("2D Chest World"));
@@ -41,15 +47,38 @@ public class LockIn2DScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+
+        // 1. Disable Tutorial Toast overlay
+        if (this.minecraft != null) {
+            this.minecraft.getTutorial().setStep(TutorialSteps.NONE);
+            // 2. Pause background world sounds
+            this.minecraft.getSoundManager().pause();
+        }
+
+        // Center player inside the chest container bounds initially
+        int guiWidth = Math.round(CHEST_TEX_W * GUI_SCALE);
+        int guiHeight = Math.round(CHEST_TEX_H * GUI_SCALE);
+        int guiX = (this.width - guiWidth) / 2;
+        int guiY = (this.height - guiHeight) / 2;
+
         if (this.playerX == 0 && this.playerY == 0) {
-            this.playerX = this.width / 2.0f;
-            this.playerY = this.height - 60.0f;
+            this.playerX = guiX + (guiWidth / 2.0f);
+            this.playerY = guiY + guiHeight - 30.0f;
+        }
+    }
+
+    @Override
+    public void removed() {
+        super.removed();
+        // Resume world audio if screen ever closes
+        if (this.minecraft != null) {
+            this.minecraft.getSoundManager().resume();
         }
     }
 
     @Override
     public boolean shouldCloseOnEsc() {
-        return false; // Strictly prevents ESC key from closing the screen
+        return false; // Strictly prevents ESC key from closing screen
     }
 
     @Override
@@ -60,10 +89,24 @@ public class LockIn2DScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
+
+        // Prevent background player death / damage / hunger
+        if (this.minecraft != null && this.minecraft.player != null) {
+            LocalPlayer p = this.minecraft.player;
+            p.getAbilities().invulnerable = true;
+            p.setHealth(p.getMaxHealth());
+            p.getFoodData().setFoodLevel(20);
+        }
+
         updatePhysics();
     }
 
     private void updatePhysics() {
+        int guiWidth = Math.round(CHEST_TEX_W * GUI_SCALE);
+        int guiHeight = Math.round(CHEST_TEX_H * GUI_SCALE);
+        int guiX = (this.width - guiWidth) / 2;
+        int guiY = (this.height - guiHeight) / 2;
+
         velocityX = 0;
         if (keyLeft) velocityX -= MOVE_SPEED;
         if (keyRight) velocityX += MOVE_SPEED;
@@ -78,14 +121,14 @@ public class LockIn2DScreen extends Screen {
         playerX += velocityX;
         playerY += velocityY;
 
-        // Screen Side Constraints
-        float minX = 25;
-        float maxX = this.width - 25;
+        // Strict constraints to stay INSIDE the chest GUI frame
+        float minX = guiX + 24;
+        float maxX = guiX + guiWidth - 24;
         if (playerX < minX) playerX = minX;
         if (playerX > maxX) playerX = maxX;
 
-        // Floor Collision (Grass Block Level)
-        float floorY = this.height - 40;
+        // Floor level inside the bottom section of the chest UI
+        float floorY = guiY + guiHeight - 20;
         if (playerY >= floorY) {
             playerY = floorY;
             velocityY = 0;
@@ -95,7 +138,7 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Intercept close commands (ESC and E key) so player stays trapped in inventory
+        // Intercept ESC and inventory keys (E)
         if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_E) {
             return true;
         }
@@ -135,24 +178,34 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // 1. Tiled Dirt Texture Background (Fixed Missing Texture)
+        // 1. Tiled Dirt Background
         renderDirtBackground(guiGraphics);
 
-        // 2. Chest Inventory GUI Overlay (Top Center)
-        renderChestMenu(guiGraphics);
+        // Calculate chest GUI position
+        int guiWidth = Math.round(CHEST_TEX_W * GUI_SCALE);
+        int guiHeight = Math.round(CHEST_TEX_H * GUI_SCALE);
+        int guiX = (this.width - guiWidth) / 2;
+        int guiY = (this.height - guiHeight) / 2;
 
-        // 3. Line of Grass Blocks on Floor
-        renderGrassFloor(guiGraphics);
+        // 2. Scaled Chest GUI Frame
+        guiGraphics.pose().pushPose();
+        guiGraphics.pose().translate(guiX, guiY, 0);
+        guiGraphics.pose().scale(GUI_SCALE, GUI_SCALE, 1.0f);
+        guiGraphics.blit(CHEST_GUI_TEXTURE, 0, 0, 0, 0, CHEST_TEX_W, CHEST_TEX_H, 256, 256);
+        guiGraphics.pose().popPose();
 
-        // 4. 3D Player Model using active player skin
+        // 3. Render Grass Floor INSIDE Chest UI
+        renderGrassFloorInsideChest(guiGraphics, guiX, guiY, guiWidth, guiHeight);
+
+        // 4. Render 3D Player Model INSIDE Chest UI
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
             int intX = Math.round(playerX);
             int intY = Math.round(playerY);
 
-            int x1 = intX - 25;
-            int y1 = intY - 60;
-            int x2 = intX + 25;
+            int x1 = intX - 18;
+            int y1 = intY - 45;
+            int x2 = intX + 18;
             int y2 = intY;
 
             InventoryScreen.renderEntityInInventoryFollowsMouse(
@@ -177,28 +230,16 @@ public class LockIn2DScreen extends Screen {
         }
     }
 
-    private void renderChestMenu(GuiGraphics guiGraphics) {
-        int chestWidth = 176;
-        int chestHeight = 114; // Single chest height
-        int chestX = (this.width - chestWidth) / 2;
-        int chestY = 10;
-
-        guiGraphics.blit(CHEST_GUI_TEXTURE, chestX, chestY, 0, 0, chestWidth, chestHeight, 256, 256);
-    }
-
-    private void renderGrassFloor(GuiGraphics guiGraphics) {
+    private void renderGrassFloorInsideChest(GuiGraphics guiGraphics, int guiX, int guiY, int guiWidth, int guiHeight) {
         ItemStack grassStack = new ItemStack(Items.GRASS_BLOCK);
-        int scale = 2;
+        int scale = 1;
         int step = 16 * scale;
-        int floorY = this.height - 32;
+        int startX = guiX + 18;
+        int endX = guiX + guiWidth - 18;
+        int floorY = guiY + guiHeight - 32;
 
-        guiGraphics.pose().pushPose();
-        guiGraphics.pose().scale(scale, scale, 1.0f);
-
-        for (int x = 0; x < this.width; x += step) {
-            guiGraphics.renderItem(grassStack, x / scale, floorY / scale);
+        for (int x = startX; x < endX; x += step) {
+            guiGraphics.renderItem(grassStack, x, floorY);
         }
-
-        guiGraphics.pose().popPose();
     }
 }
