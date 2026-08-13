@@ -2,6 +2,7 @@ package com.example.examplemod;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
@@ -47,7 +48,7 @@ public class LockIn2DScreen extends Screen {
     protected void init() {
         super.init();
 
-        // 1. Disable Tutorial Toasts & Pause sound engine
+        // Disable Tutorial Toasts & Pause sound engine
         if (this.minecraft != null) {
             this.minecraft.getTutorial().setStep(TutorialSteps.NONE);
             this.minecraft.getSoundManager().pause();
@@ -59,7 +60,7 @@ public class LockIn2DScreen extends Screen {
 
         if (this.playerX == 0 && this.playerY == 0) {
             this.playerX = guiX + (CHEST_W / 2.0f);
-            this.playerY = guiY + 108.0f; // Exactly on top of row 6 grass blocks
+            this.playerY = guiY + 108.0f; // On top of row 6 grass blocks
         }
     }
 
@@ -73,7 +74,7 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public boolean shouldCloseOnEsc() {
-        return false; // Prevent ESC from closing screen
+        return false;
     }
 
     @Override
@@ -85,7 +86,7 @@ public class LockIn2DScreen extends Screen {
     public void tick() {
         super.tick();
 
-        // Keep player invulnerable & fed in background world
+        // Keep player invulnerable & fed
         if (this.minecraft != null && this.minecraft.player != null) {
             LocalPlayer p = this.minecraft.player;
             p.getAbilities().invulnerable = true;
@@ -131,7 +132,11 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_E) {
+        // Pressing ESC opens Pause Menu instead of closing game screen completely
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            if (this.minecraft != null) {
+                this.minecraft.setScreen(new PauseScreen(true));
+            }
             return true;
         }
 
@@ -170,8 +175,8 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // 1. Render Crisp Unblurred Tiled Dirt Background
-        renderSharpDirtBackground(guiGraphics);
+        // 1. Crisp Unblurred Dirt Background
+        renderDirtBackground(guiGraphics);
 
         int guiX = (this.width - CHEST_W) / 2;
         int guiY = (this.height - CHEST_H) / 2;
@@ -182,13 +187,12 @@ public class LockIn2DScreen extends Screen {
         // 3. Grass Blocks at Row 6 of Top Chest Grid
         renderGrassFloorInTopGrid(guiGraphics, guiX, guiY);
 
-        // 4. Render 3D Player Model Standing ON Grass with Proper Cursor Looking
+        // 4. Render 3D Player Model Standing ON Grass with Cursor Eye Tracking
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
             int intX = Math.round(playerX);
             int intY = Math.round(playerY);
 
-            // Bounding box centered on the player for smooth mouse head tracking
             int x1 = intX - 15;
             int y1 = intY - 32;
             int x2 = intX + 15;
@@ -207,7 +211,7 @@ public class LockIn2DScreen extends Screen {
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
 
-    private void renderSharpDirtBackground(GuiGraphics guiGraphics) {
+    private void renderDirtBackground(GuiGraphics guiGraphics) {
         int tileSize = 16;
         for (int x = 0; x < this.width; x += tileSize) {
             for (int y = 0; y < this.height; y += tileSize) {
