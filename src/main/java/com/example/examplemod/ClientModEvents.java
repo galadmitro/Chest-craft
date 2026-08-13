@@ -1,6 +1,7 @@
 package com.example.examplemod;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.tutorial.TutorialSteps;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -17,6 +18,7 @@ public class ClientModEvents {
         Minecraft mc = Minecraft.getInstance();
         if (event.getEntity() == mc.player && event.getLevel().isClientSide()) {
             mc.execute(() -> {
+                mc.getTutorial().setStep(TutorialSteps.NONE);
                 if (!(mc.screen instanceof LockIn2DScreen)) {
                     mc.setScreen(new LockIn2DScreen());
                 }
@@ -24,11 +26,12 @@ public class ClientModEvents {
         }
     }
 
-    // Continuously enforce screen lock every tick (0-tick escape gap)
+    // Continuously enforce screen lock every tick and silence tutorials/damage
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null && mc.level != null) {
+            mc.getTutorial().setStep(TutorialSteps.NONE);
             if (!(mc.screen instanceof LockIn2DScreen)) {
                 mc.setScreen(new LockIn2DScreen());
             }
@@ -41,7 +44,7 @@ public class ClientModEvents {
         if (!(event.getNewScreen() instanceof LockIn2DScreen)) {
             Minecraft mc = Minecraft.getInstance();
             if (mc.player != null && mc.level != null) {
-                event.setNewScreen(event.getNewScreen() instanceof LockIn2DScreen ? event.getNewScreen() : new LockIn2DScreen());
+                event.setNewScreen(new LockIn2DScreen());
             }
         }
     }
