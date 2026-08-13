@@ -33,7 +33,7 @@ public class LockIn2DScreen extends Screen {
     private static final float GRAVITY = 0.6f;
     private static final float JUMP_STRENGTH = -8.5f;
     private static final float MOVE_SPEED = 2.5f;
-    private static final int PLAYER_SCALE = 15;
+    private static final int PLAYER_SCALE = 18;
 
     // Key States
     private boolean keyLeft = false;
@@ -48,7 +48,7 @@ public class LockIn2DScreen extends Screen {
     protected void init() {
         super.init();
 
-        // Disable Tutorial Toasts & Pause sound engine
+        // 1. Disable Tutorial Toasts & Pause 3D World Sound Engine
         if (this.minecraft != null) {
             this.minecraft.getTutorial().setStep(TutorialSteps.NONE);
             this.minecraft.getSoundManager().pause();
@@ -60,7 +60,7 @@ public class LockIn2DScreen extends Screen {
 
         if (this.playerX == 0 && this.playerY == 0) {
             this.playerX = guiX + (CHEST_W / 2.0f);
-            this.playerY = guiY + 108.0f; // On top of row 6 grass blocks
+            this.playerY = guiY + 108.0f; // Directly on top of row 6 grass blocks
         }
     }
 
@@ -86,7 +86,7 @@ public class LockIn2DScreen extends Screen {
     public void tick() {
         super.tick();
 
-        // Keep player invulnerable & fed
+        // Keep player invulnerable & fed in background world
         if (this.minecraft != null && this.minecraft.player != null) {
             LocalPlayer p = this.minecraft.player;
             p.getAbilities().invulnerable = true;
@@ -132,7 +132,7 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Pressing ESC opens Pause Menu instead of closing game screen completely
+        // Pressing ESC opens standard Pause Menu
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             if (this.minecraft != null) {
                 this.minecraft.setScreen(new PauseScreen(true));
@@ -175,8 +175,8 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // 1. Crisp Unblurred Dirt Background
-        renderDirtBackground(guiGraphics);
+        // 1. Crisp Unblurred Tiled Dirt Background
+        renderSharpDirtBackground(guiGraphics);
 
         int guiX = (this.width - CHEST_W) / 2;
         int guiY = (this.height - CHEST_H) / 2;
@@ -187,15 +187,16 @@ public class LockIn2DScreen extends Screen {
         // 3. Grass Blocks at Row 6 of Top Chest Grid
         renderGrassFloorInTopGrid(guiGraphics, guiX, guiY);
 
-        // 4. Render 3D Player Model Standing ON Grass with Cursor Eye Tracking
+        // 4. Render 3D Player Model Standing ON Grass with Smooth Cursor Eye Tracking
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
             int intX = Math.round(playerX);
             int intY = Math.round(playerY);
 
-            int x1 = intX - 15;
-            int y1 = intY - 32;
-            int x2 = intX + 15;
+            // Centered bounding box relative to player position
+            int x1 = intX - 20;
+            int y1 = intY - 38;
+            int x2 = intX + 20;
             int y2 = intY;
 
             InventoryScreen.renderEntityInInventoryFollowsMouse(
@@ -203,7 +204,7 @@ public class LockIn2DScreen extends Screen {
                     x1, y1, x2, y2,
                     PLAYER_SCALE,
                     0.0625f,
-                    mouseX, mouseY,
+                    (float) mouseX, (float) mouseY,
                     player
             );
         }
@@ -211,7 +212,7 @@ public class LockIn2DScreen extends Screen {
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
 
-    private void renderDirtBackground(GuiGraphics guiGraphics) {
+    private void renderSharpDirtBackground(GuiGraphics guiGraphics) {
         int tileSize = 16;
         for (int x = 0; x < this.width; x += tileSize) {
             for (int y = 0; y < this.height; y += tileSize) {
