@@ -17,7 +17,6 @@ import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 @EventBusSubscriber(modid = "examplemod", value = Dist.CLIENT)
 public class ClientModEvents {
 
-    // Trigger 2D screen lock-in when player enters world
     @SubscribeEvent
     public static void onEntityJoinWorld(EntityJoinLevelEvent event) {
         Minecraft mc = Minecraft.getInstance();
@@ -32,7 +31,6 @@ public class ClientModEvents {
         }
     }
 
-    // Keep screen locked-in & force disable blur shader engine tick-by-tick
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
@@ -48,7 +46,6 @@ public class ClientModEvents {
                 mc.setScreen(new LockIn2DScreen());
             }
 
-            // MOB TARGETING IMMUNITY: Strip target status from any mob
             for (Entity entity : mc.level.entitiesForRendering()) {
                 if (entity instanceof Mob mob && mob.getTarget() == mc.player) {
                     mob.setTarget(null);
@@ -57,7 +54,6 @@ public class ClientModEvents {
         }
     }
 
-    // Intercept screen opening and prevent 3D world render on PauseScreen
     @SubscribeEvent
     public static void onScreenOpening(ScreenEvent.Opening event) {
         if (!(event.getNewScreen() instanceof LockIn2DScreen) && !(event.getNewScreen() instanceof PauseScreen)) {
@@ -68,7 +64,6 @@ public class ClientModEvents {
         }
     }
 
-    // Render 2D Chest World directly underneath Pause Menu instead of 3D World
     @SubscribeEvent
     public static void onScreenRenderPre(ScreenEvent.Render.Pre event) {
         Minecraft mc = Minecraft.getInstance();
@@ -87,7 +82,6 @@ public class ClientModEvents {
         }
     }
 
-    // DEAFNESS: Mute all real-world sounds while in 2D minigame
     @SubscribeEvent
     public static void onPlaySound(PlaySoundEvent event) {
         Minecraft mc = Minecraft.getInstance();
@@ -96,7 +90,6 @@ public class ClientModEvents {
         }
     }
 
-    // IMMUNITY: Prevent player from taking damage
     @SubscribeEvent
     public static void onLivingIncomingDamage(LivingIncomingDamageEvent event) {
         Minecraft mc = Minecraft.getInstance();
