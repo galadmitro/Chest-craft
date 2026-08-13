@@ -12,7 +12,9 @@ import net.minecraft.world.item.Items;
 import org.lwjgl.glfw.GLFW;
 
 public class LockIn2DScreen extends Screen {
-    private static final ResourceLocation DIRT_TEXTURE = ResourceLocation.withDefaultNamespace("textures/gui/options_background.png");
+    // Textures
+    private static final ResourceLocation DIRT_TEXTURE = ResourceLocation.withDefaultNamespace("textures/block/dirt.png");
+    private static final ResourceLocation CHEST_GUI_TEXTURE = ResourceLocation.withDefaultNamespace("textures/gui/container/generic_54.png");
 
     // 2D Physics & Player Coordinates
     private float playerX = 0;
@@ -47,7 +49,7 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public boolean shouldCloseOnEsc() {
-        return false; // Disables ESC closing completely
+        return false; // Strictly prevents ESC key from closing the screen
     }
 
     @Override
@@ -93,7 +95,7 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Intercept close commands (ESC / E key)
+        // Intercept close commands (ESC and E key) so player stays trapped in inventory
         if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_E) {
             return true;
         }
@@ -133,13 +135,16 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // 1. Tiled Dirt Texture Background
+        // 1. Tiled Dirt Texture Background (Fixed Missing Texture)
         renderDirtBackground(guiGraphics);
 
-        // 2. Line of Grass Blocks on Floor
+        // 2. Chest Inventory GUI Overlay (Top Center)
+        renderChestMenu(guiGraphics);
+
+        // 3. Line of Grass Blocks on Floor
         renderGrassFloor(guiGraphics);
 
-        // 3. 3D Player Model using active player skin
+        // 4. 3D Player Model using active player skin
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
             int intX = Math.round(playerX);
@@ -164,12 +169,21 @@ public class LockIn2DScreen extends Screen {
     }
 
     private void renderDirtBackground(GuiGraphics guiGraphics) {
-        int tileSize = 32;
+        int tileSize = 16;
         for (int x = 0; x < this.width; x += tileSize) {
             for (int y = 0; y < this.height; y += tileSize) {
                 guiGraphics.blit(DIRT_TEXTURE, x, y, 0, 0, tileSize, tileSize, tileSize, tileSize);
             }
         }
+    }
+
+    private void renderChestMenu(GuiGraphics guiGraphics) {
+        int chestWidth = 176;
+        int chestHeight = 114; // Single chest height
+        int chestX = (this.width - chestWidth) / 2;
+        int chestY = 10;
+
+        guiGraphics.blit(CHEST_GUI_TEXTURE, chestX, chestY, 0, 0, chestWidth, chestHeight, 256, 256);
     }
 
     private void renderGrassFloor(GuiGraphics guiGraphics) {
