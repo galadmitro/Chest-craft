@@ -24,6 +24,7 @@ public class ClientModEvents {
         if (event.getEntity() == mc.player && event.getLevel().isClientSide()) {
             mc.execute(() -> {
                 mc.getTutorial().setStep(TutorialSteps.NONE);
+                mc.options.menuBackgroundBlurriness().set(0);
                 if (!(mc.screen instanceof LockIn2DScreen)) {
                     mc.setScreen(new LockIn2DScreen());
                 }
@@ -31,18 +32,23 @@ public class ClientModEvents {
         }
     }
 
-    // Lock-in check per tick (allows PauseScreen to stay open when ESC is pressed)
+    // Keep screen locked-in & force disable blur shader engine tick-by-tick
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null && mc.level != null) {
             mc.getTutorial().setStep(TutorialSteps.NONE);
+            mc.options.menuBackgroundBlurriness().set(0);
+
+            if (mc.gameRenderer != null) {
+                mc.gameRenderer.shutdownEffect();
+            }
 
             if (!(mc.screen instanceof LockIn2DScreen) && !(mc.screen instanceof PauseScreen)) {
                 mc.setScreen(new LockIn2DScreen());
             }
 
-            // MOB TARGETING IMMUNITY: Strip target status from any mob targeting player
+            // MOB TARGETING IMMUNITY: Strip target status from any mob
             for (Entity entity : mc.level.entitiesForRendering()) {
                 if (entity instanceof Mob mob && mob.getTarget() == mc.player) {
                     mob.setTarget(null);
@@ -51,7 +57,7 @@ public class ClientModEvents {
         }
     }
 
-    // Intercept standard inventory/container screen openings
+    // Intercept screen opening and prevent 3D world render on PauseScreen
     @SubscribeEvent
     public static void onScreenOpening(ScreenEvent.Opening event) {
         if (!(event.getNewScreen() instanceof LockIn2DScreen) && !(event.getNewScreen() instanceof PauseScreen)) {
@@ -62,7 +68,26 @@ public class ClientModEvents {
         }
     }
 
-    // DEAFNESS: Mute all real-world sounds while in the 2D minigame
+    // Render 2D Chest World directly underneath Pause Menu instead of 3D World
+    @SubscribeEvent
+    public static void onScreenRenderPre(ScreenEvent.Render.Pre event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.gameRenderer != null) {
+            mc.gameRenderer.shutdownEffect();
+        }
+
+        if (event.getScreen() instanceof PauseScreen) {
+            LockIn2DScreen.render2DScene(
+                    event.getGuiGraphics(),
+                    event.getScreen().width,
+                    event.getScreen().height,
+                    event.getMouseX(),
+                    event.getMouseY()
+            );
+        }
+    }
+
+    // DEAFNESS: Mute all real-world sounds while in 2D minigame
     @SubscribeEvent
     public static void onPlaySound(PlaySoundEvent event) {
         Minecraft mc = Minecraft.getInstance();
