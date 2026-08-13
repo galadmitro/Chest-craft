@@ -24,23 +24,22 @@ public class LockIn2DScreen extends Screen {
     public static final int CHEST_H = 222;
     public static final float SECTION_SIZE = 18.0f;
 
-    // 6 Rows x 9 Columns Block Grid System (0 = Air, 1 = Grass/Solid)
+    // Grid (6 Rows x 9 Columns)
     public static final int ROWS = 6;
     public static final int COLS = 9;
     public static final int[][] TILE_GRID = new int[ROWS][COLS];
 
     static {
-        // Default Row 5 (index 5) with grass blocks
         for (int c = 0; c < COLS; c++) {
             TILE_GRID[5][c] = 1;
         }
     }
 
-    // Player Bounding Box (AABB in 2D Pixels)
+    // Player AABB Bounds
     public static final float PLAYER_WIDTH = 10.0f;
     public static final float PLAYER_HEIGHT = 28.0f;
 
-    // Movement & Interpolation States
+    // Movement & Subpixel Interpolation States
     public static float playerX = 0;
     public static float playerY = 0;
     public static float prevPlayerX = 0;
@@ -50,12 +49,12 @@ public class LockIn2DScreen extends Screen {
     private float velocityY = 0;
     private boolean isOnGround = false;
 
-    // Torso Follow State
+    // Torso rotation state
     private static float currentBodyYaw = 0.0f;
 
-    // Movement Physics
+    // Physics Constants
     private static final float GRAVITY = 0.42f;
-    private static final float JUMP_STRENGTH = -4.3f; // Max jump ~1.25 blocks
+    private static final float JUMP_STRENGTH = -4.3f;
     private static final float ACCELERATION = 0.70f;
     private static final float FRICTION = 0.75f;
     private static final float MAX_SPEED = 2.20f;
@@ -86,7 +85,7 @@ public class LockIn2DScreen extends Screen {
 
         if (playerX == 0 && playerY == 0) {
             playerX = guiX + (CHEST_W / 2.0f);
-            playerY = gridStartY + (5 * SECTION_SIZE); // Land on top of Row 5
+            playerY = gridStartY + (5 * SECTION_SIZE);
             prevPlayerX = playerX;
             prevPlayerY = playerY;
         }
@@ -171,19 +170,16 @@ public class LockIn2DScreen extends Screen {
 
         if (collides(playerX, playerY, gridStartX, gridStartY)) {
             if (velocityY > 0) {
-                // Landing on top edge of block
                 playerY = snapToBlockTop(playerY, gridStartY);
                 velocityY = 0;
                 isOnGround = true;
             } else if (velocityY < 0) {
-                // Hitting head on ceiling
                 playerY = snapToBlockBottom(playerY, gridStartY) + PLAYER_HEIGHT;
                 velocityY = 0;
             }
         }
     }
 
-    // AABB Collision Check against Grid
     private boolean collides(float px, float py, float gridX, float gridY) {
         float pMinX = px - (PLAYER_WIDTH / 2.0f);
         float pMaxX = px + (PLAYER_WIDTH / 2.0f);
@@ -259,7 +255,8 @@ public class LockIn2DScreen extends Screen {
             keyRight = true;
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_SPACE || keyCode == GLFW.GLFW_KEY_W || keyCode == GLFW.GLFW_KEY_UP) {
+        // ONLY Space bar triggers Jump (W key disabled for jump)
+        if (keyCode == GLFW.GLFW_KEY_SPACE) {
             keyJump = true;
             return true;
         }
@@ -277,7 +274,7 @@ public class LockIn2DScreen extends Screen {
             keyRight = false;
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_SPACE || keyCode == GLFW.GLFW_KEY_W || keyCode == GLFW.GLFW_KEY_UP) {
+        if (keyCode == GLFW.GLFW_KEY_SPACE) {
             keyJump = false;
             return true;
         }
@@ -296,7 +293,7 @@ public class LockIn2DScreen extends Screen {
     }
 
     public static void render2DScene(GuiGraphics guiGraphics, int screenWidth, int screenHeight, int mouseX, int mouseY, float partialTick) {
-        // 1. Unblurred Dirt Background
+        // Background
         int tileSize = 16;
         for (int x = 0; x < screenWidth; x += tileSize) {
             for (int y = 0; y < screenHeight; y += tileSize) {
@@ -309,10 +306,10 @@ public class LockIn2DScreen extends Screen {
         float gridStartX = guiX + 8;
         float gridStartY = guiY + 18;
 
-        // 2. Chest GUI
+        // Chest GUI
         guiGraphics.blit(CHEST_GUI_TEXTURE, guiX, guiY, 0, 0, CHEST_W, CHEST_H, 256, 256);
 
-        // 3. Render Dynamic Grid Blocks
+        // Dynamic Tile Grid Blocks
         ItemStack grassStack = new ItemStack(Items.GRASS_BLOCK);
         for (int r = 0; r < ROWS; r++) {
             for (int c = 0; c < COLS; c++) {
@@ -324,14 +321,15 @@ public class LockIn2DScreen extends Screen {
             }
         }
 
-        // 4. Interpolated High-FPS Smooth Player Render
+        // Exact Floating-Point Interpolated Coordinates (Sub-pixel rendering)
         float smoothX = Mth.lerp(partialTick, prevPlayerX, playerX);
         float smoothY = Mth.lerp(partialTick, prevPlayerY, playerY);
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
-            int intX = Math.round(smoothX);
-            int intY = Math.round(smoothY);
+            // Replicate player's walk limb animation in real time based on actual horizontal delta
+            float speed = Math.abs(playerX - prevPlayerX);
+            player.walkAnimation.update(speed * 1.5f, 0.4f);
 
             // Save state
             float oldYRot = player.getYRot();
@@ -339,15 +337,14 @@ public class LockIn2DScreen extends Screen {
             float oldYHeadRot = player.yHeadRot;
             float oldYBodyRot = player.yBodyRotO;
 
-            // Perfect Center Eye Raycast
-            float eyeY = intY - 21.0f; // Precise eye center height
-            float dx = mouseX - intX;
+            // Head & Cursor Alignment
+            float eyeY = smoothY - 21.0f;
+            float dx = mouseX - smoothX;
             float dy = mouseY - eyeY;
 
             float targetHeadYaw = (float) Math.toDegrees(Math.atan2(dx, 40));
             float targetPitch = (float) Math.toDegrees(Math.atan2(-dy, 40));
 
-            // Torso naturally follows head rotation (vanilla player angle limit)
             float headBodyDiff = Mth.wrapDegrees(targetHeadYaw - currentBodyYaw);
             if (Math.abs(headBodyDiff) > 40.0f) {
                 currentBodyYaw += (headBodyDiff > 0 ? headBodyDiff - 40.0f : headBodyDiff + 40.0f);
@@ -359,19 +356,21 @@ public class LockIn2DScreen extends Screen {
             player.yHeadRot = targetHeadYaw;
             player.yBodyRot = currentBodyYaw;
 
-            int x1 = intX - 25;
-            int y1 = intY - 42;
-            int x2 = intX + 25;
-            int y2 = intY;
+            // Render via Matrix Pose Stack for true subpixel precision (no integer truncation)
+            guiGraphics.pose().pushPose();
+            guiGraphics.pose().translate(smoothX, smoothY, 0.0f);
 
             InventoryScreen.renderEntityInInventoryFollowsMouse(
                     guiGraphics,
-                    x1, y1, x2, y2,
+                    -25, -42, 25, 0,
                     PLAYER_SCALE,
                     0.0625f,
-                    (float) mouseX, (float) mouseY,
+                    mouseX - (int) smoothX,
+                    mouseY - (int) smoothY,
                     player
             );
+
+            guiGraphics.pose().popPose();
 
             // Restore state
             player.setYRot(oldYRot);
@@ -379,13 +378,14 @@ public class LockIn2DScreen extends Screen {
             player.yHeadRot = oldYHeadRot;
             player.yBodyRot = oldYBodyRot;
 
-            // 5. Scaled Nametag
+            // Elevated Nametag Render
             if (Config.SHOW_NAMETAG.get()) {
                 Component name = player.getDisplayName();
                 int textWidth = Minecraft.getInstance().font.width(name);
 
                 guiGraphics.pose().pushPose();
-                guiGraphics.pose().translate((float) intX, (float) (intY - 38), 0.0f);
+                // Shifted Y offset up (-52.0f) so it rests comfortably above the head
+                guiGraphics.pose().translate(smoothX, smoothY - 52.0f, 0.0f);
                 guiGraphics.pose().scale(0.60f, 0.60f, 1.0f);
 
                 int scaledX = -(textWidth / 2);
