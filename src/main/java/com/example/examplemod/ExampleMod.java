@@ -1,13 +1,14 @@
 package com.example.examplemod;
 
-import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 
-@Mod(ExampleMod.MOD_ID)
+@Mod("examplemod")
 public class ExampleMod {
-    public static final String MOD_ID = "examplemod";
 
-    public ExampleMod(IEventBus modEventBus) {
-        // Core initialization logic
+    public ExampleMod(ModContainer modContainer) {
+        // Register Client Config for Mods -> Configure menu
+        modContainer.registerConfig(ModConfig.Type.CLIENT, Config.SPEC);
     }
 }
