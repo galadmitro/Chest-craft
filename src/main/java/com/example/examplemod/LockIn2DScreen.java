@@ -17,6 +17,10 @@ public class LockIn2DScreen extends Screen {
     private static final ResourceLocation DIRT_TEXTURE = ResourceLocation.withDefaultNamespace("textures/block/dirt.png");
     private static final ResourceLocation CHEST_GUI_TEXTURE = ResourceLocation.withDefaultNamespace("textures/gui/container/generic_54.png");
 
+    // Exact Vanilla Double Chest Dimensions (1:1 Unscaled)
+    private static final int CHEST_W = 176;
+    private static final int CHEST_H = 222;
+
     // 2D Physics & Player Coordinates
     private float playerX = 0;
     private float playerY = 0;
@@ -24,21 +28,16 @@ public class LockIn2DScreen extends Screen {
     private float velocityY = 0;
     private boolean isOnGround = false;
 
-    // Movement Physics Configuration
-    private static final float GRAVITY = 0.8f;
-    private static final float JUMP_STRENGTH = -11.0f;
-    private static final float MOVE_SPEED = 3.5f;
-    private static final int PLAYER_SCALE = 22;
+    // Movement Physics (Tuned for 1x Pixel Grid)
+    private static final float GRAVITY = 0.6f;
+    private static final float JUMP_STRENGTH = -8.5f;
+    private static final float MOVE_SPEED = 2.5f;
+    private static final int PLAYER_SCALE = 15;
 
     // Key States
     private boolean keyLeft = false;
     private boolean keyRight = false;
     private boolean keyJump = false;
-
-    // Chest Frame Dimensions (2x Scaled)
-    private static final int CHEST_TEX_W = 176;
-    private static final int CHEST_TEX_H = 166;
-    private static final float GUI_SCALE = 2.0f;
 
     public LockIn2DScreen() {
         super(Component.literal("2D Chest World"));
@@ -48,29 +47,26 @@ public class LockIn2DScreen extends Screen {
     protected void init() {
         super.init();
 
-        // 1. Disable Tutorial Toast overlay
+        // 1. Disable Tutorial Toasts
         if (this.minecraft != null) {
             this.minecraft.getTutorial().setStep(TutorialSteps.NONE);
-            // 2. Pause background world sounds
+            // 2. Mute world background sound
             this.minecraft.getSoundManager().pause();
         }
 
-        // Center player inside the chest container bounds initially
-        int guiWidth = Math.round(CHEST_TEX_W * GUI_SCALE);
-        int guiHeight = Math.round(CHEST_TEX_H * GUI_SCALE);
-        int guiX = (this.width - guiWidth) / 2;
-        int guiY = (this.height - guiHeight) / 2;
+        // Center player inside the TOP CHEST GRID initially
+        int guiX = (this.width - CHEST_W) / 2;
+        int guiY = (this.height - CHEST_H) / 2;
 
         if (this.playerX == 0 && this.playerY == 0) {
-            this.playerX = guiX + (guiWidth / 2.0f);
-            this.playerY = guiY + guiHeight - 30.0f;
+            this.playerX = guiX + (CHEST_W / 2.0f);
+            this.playerY = guiY + 125.0f; // Bottom of top chest grid
         }
     }
 
     @Override
     public void removed() {
         super.removed();
-        // Resume world audio if screen ever closes
         if (this.minecraft != null) {
             this.minecraft.getSoundManager().resume();
         }
@@ -78,7 +74,7 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public boolean shouldCloseOnEsc() {
-        return false; // Strictly prevents ESC key from closing screen
+        return false; // Prevent ESC from closing screen
     }
 
     @Override
@@ -90,7 +86,7 @@ public class LockIn2DScreen extends Screen {
     public void tick() {
         super.tick();
 
-        // Prevent background player death / damage / hunger
+        // Keep player invulnerable & fed in background world
         if (this.minecraft != null && this.minecraft.player != null) {
             LocalPlayer p = this.minecraft.player;
             p.getAbilities().invulnerable = true;
@@ -102,10 +98,8 @@ public class LockIn2DScreen extends Screen {
     }
 
     private void updatePhysics() {
-        int guiWidth = Math.round(CHEST_TEX_W * GUI_SCALE);
-        int guiHeight = Math.round(CHEST_TEX_H * GUI_SCALE);
-        int guiX = (this.width - guiWidth) / 2;
-        int guiY = (this.height - guiHeight) / 2;
+        int guiX = (this.width - CHEST_W) / 2;
+        int guiY = (this.height - CHEST_H) / 2;
 
         velocityX = 0;
         if (keyLeft) velocityX -= MOVE_SPEED;
@@ -121,14 +115,14 @@ public class LockIn2DScreen extends Screen {
         playerX += velocityX;
         playerY += velocityY;
 
-        // Strict constraints to stay INSIDE the chest GUI frame
-        float minX = guiX + 24;
-        float maxX = guiX + guiWidth - 24;
+        // Strict constraints: Left and Right walls of top chest grid
+        float minX = guiX + 16;
+        float maxX = guiX + CHEST_W - 16;
         if (playerX < minX) playerX = minX;
         if (playerX > maxX) playerX = maxX;
 
-        // Floor level inside the bottom section of the chest UI
-        float floorY = guiY + guiHeight - 20;
+        // Floor: Bottom boundary of the TOP chest grid (Row 6)
+        float floorY = guiY + 125;
         if (playerY >= floorY) {
             playerY = floorY;
             velocityY = 0;
@@ -138,7 +132,7 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Intercept ESC and inventory keys (E)
+        // Prevent closing via ESC / E
         if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_E) {
             return true;
         }
@@ -178,34 +172,27 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // 1. Tiled Dirt Background
+        // 1. Background Dirt
         renderDirtBackground(guiGraphics);
 
-        // Calculate chest GUI position
-        int guiWidth = Math.round(CHEST_TEX_W * GUI_SCALE);
-        int guiHeight = Math.round(CHEST_TEX_H * GUI_SCALE);
-        int guiX = (this.width - guiWidth) / 2;
-        int guiY = (this.height - guiHeight) / 2;
+        int guiX = (this.width - CHEST_W) / 2;
+        int guiY = (this.height - CHEST_H) / 2;
 
-        // 2. Scaled Chest GUI Frame
-        guiGraphics.pose().pushPose();
-        guiGraphics.pose().translate(guiX, guiY, 0);
-        guiGraphics.pose().scale(GUI_SCALE, GUI_SCALE, 1.0f);
-        guiGraphics.blit(CHEST_GUI_TEXTURE, 0, 0, 0, 0, CHEST_TEX_W, CHEST_TEX_H, 256, 256);
-        guiGraphics.pose().popPose();
+        // 2. Pixel-Perfect Crisp Vanilla Chest GUI (1:1 Unscaled)
+        guiGraphics.blit(CHEST_GUI_TEXTURE, guiX, guiY, 0, 0, CHEST_W, CHEST_H, 256, 256);
 
-        // 3. Render Grass Floor INSIDE Chest UI
-        renderGrassFloorInsideChest(guiGraphics, guiX, guiY, guiWidth, guiHeight);
+        // 3. Grass Blocks at the bottom of TOP CHEST GRID
+        renderGrassFloorInTopGrid(guiGraphics, guiX, guiY);
 
-        // 4. Render 3D Player Model INSIDE Chest UI
+        // 4. Player inside TOP CHEST GRID
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
             int intX = Math.round(playerX);
             int intY = Math.round(playerY);
 
-            int x1 = intX - 18;
-            int y1 = intY - 45;
-            int x2 = intX + 18;
+            int x1 = intX - 12;
+            int y1 = intY - 28;
+            int x2 = intX + 12;
             int y2 = intY;
 
             InventoryScreen.renderEntityInInventoryFollowsMouse(
@@ -230,16 +217,13 @@ public class LockIn2DScreen extends Screen {
         }
     }
 
-    private void renderGrassFloorInsideChest(GuiGraphics guiGraphics, int guiX, int guiY, int guiWidth, int guiHeight) {
+    private void renderGrassFloorInTopGrid(GuiGraphics guiGraphics, int guiX, int guiY) {
         ItemStack grassStack = new ItemStack(Items.GRASS_BLOCK);
-        int scale = 1;
-        int step = 16 * scale;
-        int startX = guiX + 18;
-        int endX = guiX + guiWidth - 18;
-        int floorY = guiY + guiHeight - 32;
+        int startX = guiX + 8;
+        int floorY = guiY + 109; // Row 6 of top grid
 
-        for (int x = startX; x < endX; x += step) {
-            guiGraphics.renderItem(grassStack, x, floorY);
+        for (int i = 0; i < 9; i++) {
+            guiGraphics.renderItem(grassStack, startX + (i * 18), floorY);
         }
     }
 }
