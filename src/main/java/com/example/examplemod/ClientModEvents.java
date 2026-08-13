@@ -42,7 +42,7 @@ public class ClientModEvents {
                 mc.gameRenderer.shutdownEffect();
             }
 
-            // ONLY enforce 2D minigame screen if in-game with no screen open
+            // Only enforce 2D minigame screen if in-game with no screen open
             if (mc.screen == null) {
                 mc.setScreen(new LockIn2DScreen());
             }
@@ -56,7 +56,7 @@ public class ClientModEvents {
         }
     }
 
-    // Render 2D Chest background behind PauseScreen without stealing focus from sub-menus
+    // Exact 6-argument matching call to render2DScene
     @SubscribeEvent
     public static void onScreenRenderPre(ScreenEvent.Render.Pre event) {
         Minecraft mc = Minecraft.getInstance();

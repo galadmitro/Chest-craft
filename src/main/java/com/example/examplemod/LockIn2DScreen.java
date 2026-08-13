@@ -26,7 +26,7 @@ public class LockIn2DScreen extends Screen {
     // Grid Metrics (1 Section / Block Slot = 18 Pixels)
     public static final float SECTION_SIZE = 18.0f;
 
-    // 2D Physics State (Current and Previous for Interpolation)
+    // 2D Physics State (Current and Previous for High-FPS Interpolation)
     public static float playerX = 0;
     public static float playerY = 0;
     public static float prevPlayerX = 0;
@@ -38,7 +38,7 @@ public class LockIn2DScreen extends Screen {
 
     // Movement Physics
     private static final float GRAVITY = 0.45f;
-    private static final float JUMP_STRENGTH = -4.5f; // Max jump: 1.25 blocks
+    private static final float JUMP_STRENGTH = -4.5f; // Max jump height: 1.25 blocks
     private static final float ACCELERATION = 0.65f;
     private static final float FRICTION = 0.72f;
     private static final float MAX_SPEED = 2.15f;
@@ -110,7 +110,7 @@ public class LockIn2DScreen extends Screen {
     }
 
     private void updatePhysics() {
-        // Save previous tick coordinates for smooth render interpolation
+        // Save previous tick coordinates for frame interpolation
         prevPlayerX = playerX;
         prevPlayerY = playerY;
 
@@ -156,7 +156,7 @@ public class LockIn2DScreen extends Screen {
             return true;
         }
 
-        // Settings / Nametag Keybind (O key)
+        // Toggle nametag keybind (O key)
         if (ExampleMod.TOGGLE_NAMETAG_KEY.matches(keyCode, scanCode)) {
             boolean current = Config.SHOW_NAMETAG.get();
             Config.SHOW_NAMETAG.set(!current);
@@ -275,13 +275,12 @@ public class LockIn2DScreen extends Screen {
             player.yHeadRot = oldYHeadRot;
             player.yBodyRot = oldYBodyRot;
 
-            // 5. Smaller Scaled Player Nametag
+            // 5. Compact Scaled Player Nametag
             if (Config.SHOW_NAMETAG.get()) {
                 Component name = player.getDisplayName();
                 int textWidth = Minecraft.getInstance().font.width(name);
 
                 guiGraphics.pose().pushPose();
-                // Position above head and scale down to 0.65x
                 guiGraphics.pose().translate((float) intX, (float) (intY - 44), 0.0f);
                 guiGraphics.pose().scale(0.65f, 0.65f, 1.0f);
 

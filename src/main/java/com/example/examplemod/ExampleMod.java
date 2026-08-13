@@ -2,10 +2,8 @@ package com.example.examplemod;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
@@ -21,16 +19,15 @@ public class ExampleMod {
             "key.categories.examplemod"
     );
 
-    public ExampleMod(ModContainer modContainer) {
+    public ExampleMod(ModContainer modContainer, IEventBus modBus) {
         // Register Client Config for Mods -> Configure menu
         modContainer.registerConfig(ModConfig.Type.CLIENT, Config.SPEC);
+
+        // Clean Mod Bus registration (fixes deprecation warnings)
+        modBus.addListener(this::registerKeyMappings);
     }
 
-    @EventBusSubscriber(modid = "examplemod", bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
-    public static class ClientModBusEvents {
-        @SubscribeEvent
-        public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
-            event.register(TOGGLE_NAMETAG_KEY);
-        }
+    private void registerKeyMappings(RegisterKeyMappingsEvent event) {
+        event.register(TOGGLE_NAMETAG_KEY);
     }
 }
