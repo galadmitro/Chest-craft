@@ -26,19 +26,22 @@ public class LockIn2DScreen extends Screen {
     // Grid Metrics (1 Section / Block Slot = 18 Pixels)
     public static final float SECTION_SIZE = 18.0f;
 
-    // 2D Physics State
+    // 2D Physics State (Current and Previous for Interpolation)
     public static float playerX = 0;
     public static float playerY = 0;
+    public static float prevPlayerX = 0;
+    public static float prevPlayerY = 0;
+
     private float velocityX = 0;
     private float velocityY = 0;
     private boolean isOnGround = false;
 
-    // Movement Physics (Smoother acceleration & friction, 1.25 Block Jump limit)
+    // Movement Physics
     private static final float GRAVITY = 0.45f;
-    private static final float JUMP_STRENGTH = -4.5f; // Max height: 1.25 sections (22.5px)
+    private static final float JUMP_STRENGTH = -4.5f; // Max jump: 1.25 blocks
     private static final float ACCELERATION = 0.65f;
     private static final float FRICTION = 0.72f;
-    private static final float MAX_SPEED = 2.15f; // Accurate walking speed
+    private static final float MAX_SPEED = 2.15f;
     private static final int PLAYER_SCALE = 18;
 
     // Key States
@@ -63,10 +66,11 @@ public class LockIn2DScreen extends Screen {
         int guiX = (this.width - CHEST_W) / 2;
         int guiY = (this.height - CHEST_H) / 2;
 
-        // Position feet directly on top of Row 6 Grass blocks (+0.5 sections lowered to fix floating)
         if (playerX == 0 && playerY == 0) {
             playerX = guiX + (CHEST_W / 2.0f);
             playerY = guiY + 108.0f + (SECTION_SIZE * 0.5f);
+            prevPlayerX = playerX;
+            prevPlayerY = playerY;
         }
     }
 
@@ -106,10 +110,13 @@ public class LockIn2DScreen extends Screen {
     }
 
     private void updatePhysics() {
+        // Save previous tick coordinates for smooth render interpolation
+        prevPlayerX = playerX;
+        prevPlayerY = playerY;
+
         int guiX = (this.width - CHEST_W) / 2;
         int guiY = (this.height - CHEST_H) / 2;
 
-        // Smooth acceleration & friction
         if (keyLeft) velocityX -= ACCELERATION;
         if (keyRight) velocityX += ACCELERATION;
         velocityX *= FRICTION;
@@ -126,13 +133,12 @@ public class LockIn2DScreen extends Screen {
         playerX += velocityX;
         playerY += velocityY;
 
-        // Boundary constraints
+        // Boundaries
         float minX = guiX + 16;
         float maxX = guiX + CHEST_W - 16;
         if (playerX < minX) playerX = minX;
         if (playerX > maxX) playerX = maxX;
 
-        // Lowered floor boundary by 0.5 sections so player rests solidly on the grass block surface
         float floorY = guiY + 108.0f + (SECTION_SIZE * 0.5f);
         if (playerY >= floorY) {
             playerY = floorY;
@@ -147,6 +153,14 @@ public class LockIn2DScreen extends Screen {
             if (this.minecraft != null) {
                 this.minecraft.setScreen(new PauseScreen(true));
             }
+            return true;
+        }
+
+        // Settings / Nametag Keybind (O key)
+        if (ExampleMod.TOGGLE_NAMETAG_KEY.matches(keyCode, scanCode)) {
+            boolean current = Config.SHOW_NAMETAG.get();
+            Config.SHOW_NAMETAG.set(!current);
+            Config.SHOW_NAMETAG.save();
             return true;
         }
 
@@ -189,13 +203,13 @@ public class LockIn2DScreen extends Screen {
             this.minecraft.gameRenderer.shutdownEffect();
         }
 
-        render2DScene(guiGraphics, this.width, this.height, mouseX, mouseY);
+        render2DScene(guiGraphics, this.width, this.height, mouseX, mouseY, partialTick);
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
 
-    public static void render2DScene(GuiGraphics guiGraphics, int screenWidth, int screenHeight, int mouseX, int mouseY) {
-        // 1. Crisp Unblurred Tiled Dirt Background
+    public static void render2DScene(GuiGraphics guiGraphics, int screenWidth, int screenHeight, int mouseX, int mouseY, float partialTick) {
+        // 1. Crisp Dirt Background
         int tileSize = 16;
         for (int x = 0; x < screenWidth; x += tileSize) {
             for (int y = 0; y < screenHeight; y += tileSize) {
@@ -217,25 +231,24 @@ public class LockIn2DScreen extends Screen {
             guiGraphics.renderItem(grassStack, startX + (i * 18), floorY);
         }
 
-        // 4. Render 3D Player Model with Real Head & Torso Rotation Tracking
+        // 4. Smooth Frame-Interpolated Player Render Position
+        float smoothX = Mth.lerp(partialTick, prevPlayerX, playerX);
+        float smoothY = Mth.lerp(partialTick, prevPlayerY, playerY);
+
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
-            int intX = Math.round(playerX);
-            int intY = Math.round(playerY);
+            int intX = Math.round(smoothX);
+            int intY = Math.round(smoothY);
 
-            // Save original rotations
             float oldYRot = player.getYRot();
             float oldXRot = player.getXRot();
             float oldYHeadRot = player.yHeadRot;
             float oldYBodyRot = player.yBodyRotO;
 
-            // Calculate exact angle to cursor
             float dx = mouseX - intX;
-            float dy = mouseY - (intY - 20); // Relative to eye height
+            float dy = mouseY - (intY - 20);
             float targetHeadYaw = (float) Math.toDegrees(Math.atan2(dx, 40));
             float targetPitch = (float) Math.toDegrees(Math.atan2(-dy, 40));
-
-            // Torso rotates naturally with head, clamped within a 35-degree body twist limit
             float bodyYaw = Mth.clamp(targetHeadYaw, -35.0f, 35.0f);
 
             player.setYRot(targetHeadYaw);
@@ -257,21 +270,28 @@ public class LockIn2DScreen extends Screen {
                     player
             );
 
-            // Restore rotations
             player.setYRot(oldYRot);
             player.setXRot(oldXRot);
             player.yHeadRot = oldYHeadRot;
             player.yBodyRot = oldYBodyRot;
 
-            // 5. Render Optional Player Nametag (Configurable via Mod Settings)
+            // 5. Smaller Scaled Player Nametag
             if (Config.SHOW_NAMETAG.get()) {
                 Component name = player.getDisplayName();
                 int textWidth = Minecraft.getInstance().font.width(name);
-                int nametagX = intX - (textWidth / 2);
-                int nametagY = intY - 45;
 
-                guiGraphics.fill(nametagX - 2, nametagY - 2, nametagX + textWidth + 2, nametagY + 9, 0x80000000);
-                guiGraphics.drawString(Minecraft.getInstance().font, name, nametagX, nametagY, 0xFFFFFFFF, false);
+                guiGraphics.pose().pushPose();
+                // Position above head and scale down to 0.65x
+                guiGraphics.pose().translate((float) intX, (float) (intY - 44), 0.0f);
+                guiGraphics.pose().scale(0.65f, 0.65f, 1.0f);
+
+                int scaledX = -(textWidth / 2);
+                int scaledY = 0;
+
+                guiGraphics.fill(scaledX - 2, scaledY - 2, scaledX + textWidth + 2, scaledY + 9, 0x80000000);
+                guiGraphics.drawString(Minecraft.getInstance().font, name, scaledX, scaledY, 0xFFFFFFFF, false);
+
+                guiGraphics.pose().popPose();
             }
         }
     }
