@@ -8,7 +8,7 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 
-@EventBusSubscriber(modid = ExampleMod.MOD_ID, value = Dist.CLIENT)
+@EventBusSubscriber(modid = "examplemod", value = Dist.CLIENT)
 public class ClientModEvents {
 
     // Trigger lock-in as soon as world loads
@@ -41,7 +41,7 @@ public class ClientModEvents {
         if (!(event.getNewScreen() instanceof LockIn2DScreen)) {
             Minecraft mc = Minecraft.getInstance();
             if (mc.player != null && mc.level != null) {
-                event.setNewScreen(new LockIn2DScreen());
+                event.setNewScreen(event.getNewScreen() instanceof LockIn2DScreen ? event.getNewScreen() : new LockIn2DScreen());
             }
         }
     }
