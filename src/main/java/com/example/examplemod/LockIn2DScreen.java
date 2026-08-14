@@ -1,11 +1,14 @@
 package com.example.examplemod;
 
+import com.mojang.blaze3d.platform.Lighting;
+import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.client.tutorial.TutorialSteps;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -13,19 +16,17 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Quaternionf;
 import org.lwjgl.glfw.GLFW;
 
 public class LockIn2DScreen extends Screen {
-    // Textures
     public static final ResourceLocation DIRT_TEXTURE = ResourceLocation.withDefaultNamespace("textures/block/dirt.png");
     public static final ResourceLocation CHEST_GUI_TEXTURE = ResourceLocation.withDefaultNamespace("textures/gui/container/generic_54.png");
 
-    // Dimensions
     public static final int CHEST_W = 176;
     public static final int CHEST_H = 222;
     public static final float SECTION_SIZE = 18.0f;
 
-    // Grid System (6 Rows x 9 Columns)
     public static final int ROWS = 6;
     public static final int COLS = 9;
     public static final int[][] TILE_GRID = new int[ROWS][COLS];
@@ -36,14 +37,12 @@ public class LockIn2DScreen extends Screen {
         }
     }
 
-    // World Spawn Anchors
     private static double startWorldX = Double.NaN;
     private static double startWorldY = Double.NaN;
     private static double startWorldZ = Double.NaN;
 
     private static final int PLAYER_SCALE = 18;
 
-    // Key States
     private boolean keyLeft = false;
     private boolean keyRight = false;
     private boolean keyJump = false;
@@ -108,12 +107,12 @@ public class LockIn2DScreen extends Screen {
         int guiX = (this.width - CHEST_W) / 2;
         float gridStartX = guiX + 8;
 
-        // Chest grid border limits (in pixels)
+        // Chest bounds
         float minScreenX = gridStartX + 10.0f;
         float maxScreenX = gridStartX + (COLS * SECTION_SIZE) - 10.0f;
         float baseChestX = guiX + (CHEST_W / 2.0f);
 
-        // Convert screen pixel limits to exact 3D world offsets
+        // Map to world positions
         double minWorldX = startWorldX + (minScreenX - baseChestX) / SECTION_SIZE;
         double maxWorldX = startWorldX + (maxScreenX - baseChestX) / SECTION_SIZE;
 
@@ -124,7 +123,7 @@ public class LockIn2DScreen extends Screen {
         if (keyLeft) targetVX = -moveSpeed;
         if (keyRight) targetVX = moveSpeed;
 
-        // Clamp 3D position BEFORE applying movement to prevent wall clipping
+        // Prevent wall clipping by hard-stopping velocity before boundary
         double currentX = player.getX();
         if (currentX <= minWorldX && targetVX < 0) {
             targetVX = 0;
@@ -134,11 +133,9 @@ public class LockIn2DScreen extends Screen {
             player.setPos(maxWorldX, player.getY(), startWorldZ);
         }
 
-        // Lock depth on Z axis to prevent 3D jitter
         player.setPos(Mth.clamp(player.getX(), minWorldX, maxWorldX), player.getY(), startWorldZ);
         player.setDeltaMovement(targetVX, vel.y, 0);
 
-        // Jump physics
         if (keyJump && player.onGround()) {
             player.jumpFromGround();
         }
@@ -200,7 +197,6 @@ public class LockIn2DScreen extends Screen {
     }
 
     public static void render2DScene(GuiGraphics guiGraphics, int screenWidth, int screenHeight, int mouseX, int mouseY, float partialTick) {
-        // Dirt Background Tiling
         int tileSize = 16;
         for (int x = 0; x < screenWidth; x += tileSize) {
             for (int y = 0; y < screenHeight; y += tileSize) {
@@ -213,10 +209,8 @@ public class LockIn2DScreen extends Screen {
         float gridStartX = guiX + 8;
         float gridStartY = guiY + 18;
 
-        // Double Chest GUI Background
         guiGraphics.blit(CHEST_GUI_TEXTURE, guiX, guiY, 0, 0, CHEST_W, CHEST_H, 256, 256);
 
-        // Tile Grid Grass Blocks
         ItemStack grassStack = new ItemStack(Items.GRASS_BLOCK);
         for (int r = 0; r < ROWS; r++) {
             for (int c = 0; c < COLS; c++) {
@@ -230,49 +224,26 @@ public class LockIn2DScreen extends Screen {
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null && !Double.isNaN(startWorldX)) {
-            // Smooth Sub-pixel Interpolation via partialTick
+            // Uncapped sub-pixel interpolation
             double lerpWorldX = Mth.lerp(partialTick, player.xo, player.getX());
             double lerpWorldY = Mth.lerp(partialTick, player.yo, player.getY());
 
             double deltaX = lerpWorldX - startWorldX;
             double deltaY = lerpWorldY - startWorldY;
 
-            // Map 3D world position to 2D screen coordinates
             float baseChestX = guiX + (CHEST_W / 2.0f);
             float baseChestY = gridStartY + (5 * SECTION_SIZE);
 
             float smoothX = baseChestX + (float) (deltaX * SECTION_SIZE);
             float smoothY = baseChestY - (float) (deltaY * SECTION_SIZE);
 
-            // Strict boundary clamping on screen
             float minX = gridStartX + 10.0f;
             float maxX = gridStartX + (COLS * SECTION_SIZE) - 10.0f;
             smoothX = Mth.clamp(smoothX, minX, maxX);
 
-            // Extract integer baseline and sub-pixel float remainder
-            int intX = (int) Math.floor(smoothX);
-            int intY = (int) Math.floor(smoothY);
-            float fracX = smoothX - intX;
-            float fracY = smoothY - intY;
+            // Directly inject sub-pixel coordinates to custom float renderer
+            renderSubPixelPlayerWithTracking(guiGraphics, smoothX, smoothY, PLAYER_SCALE, mouseX, mouseY, player, partialTick);
 
-            // Matrix translation handles sub-pixel precision while passing int arguments to MC renderer
-            guiGraphics.pose().pushPose();
-            guiGraphics.pose().translate(fracX, fracY, 0.0f);
-
-            InventoryScreen.renderEntityInInventoryFollowsMouse(
-                    guiGraphics,
-                    intX - 25, intY - 45,
-                    intX + 25, intY,
-                    PLAYER_SCALE,
-                    0.0625f,
-                    (float) mouseX - fracX,
-                    (float) mouseY - fracY,
-                    player
-            );
-
-            guiGraphics.pose().popPose();
-
-            // Elevated Nametag
             if (Config.SHOW_NAMETAG.get()) {
                 Component name = player.getDisplayName();
                 int textWidth = Minecraft.getInstance().font.width(name);
@@ -290,5 +261,57 @@ public class LockIn2DScreen extends Screen {
                 guiGraphics.pose().popPose();
             }
         }
+    }
+
+    // Custom method bypasses InventoryScreen.class entirely to accept true float positions
+    private static void renderSubPixelPlayerWithTracking(GuiGraphics guiGraphics, float x, float y, float scale, float mouseX, float mouseY, LocalPlayer player, float partialTick) {
+        float lookX = (float) Math.atan((x - mouseX) / 40.0f);
+        float lookY = (float) Math.atan((y - (scale * 1.5f) - mouseY) / 40.0f);
+
+        guiGraphics.pose().pushPose();
+        // Applies the precise floating-point coordinate visually bypassing int cast limits
+        guiGraphics.pose().translate(x, y, 150.0f); 
+        guiGraphics.pose().scale(scale, scale, -scale);
+
+        guiGraphics.pose().mulPose(Axis.ZP.rotationDegrees(180.0F));
+        guiGraphics.pose().mulPose(Axis.XP.rotationDegrees(lookY * 20.0F));
+
+        // Preserve states
+        float yBodyRotO = player.yBodyRotO;
+        float yBodyRot = player.yBodyRot;
+        float yRot = player.getYRot();
+        float xRot = player.getXRot();
+        float yHeadRotO = player.yHeadRotO;
+        float yHeadRot = player.yHeadRot;
+
+        // Apply mouse tracking manually
+        player.yBodyRot = 180.0F + lookX * 20.0F;
+        player.setYRot(180.0F + lookX * 40.0F);
+        player.setXRot(-lookY * 20.0F);
+        player.yHeadRot = player.getYRot();
+        player.yHeadRotO = player.getYRot();
+
+        Lighting.setupForEntityInInventory(new Quaternionf());
+
+        EntityRenderDispatcher dispatcher = Minecraft.getInstance().getEntityRenderDispatcher();
+        dispatcher.setRenderShadow(false);
+
+        MultiBufferSource.BufferSource buffers = Minecraft.getInstance().renderBuffers().bufferSource();
+
+        dispatcher.render(player, 0.0D, 0.0D, 0.0D, 0.0F, partialTick, guiGraphics.pose(), buffers, 15728880);
+
+        buffers.endBatch();
+        dispatcher.setRenderShadow(true);
+        guiGraphics.pose().popPose();
+
+        Lighting.setupFor3DItems();
+
+        // Restore original states
+        player.yBodyRotO = yBodyRotO;
+        player.yBodyRot = yBodyRot;
+        player.setYRot(yRot);
+        player.setXRot(xRot);
+        player.yHeadRotO = yHeadRotO;
+        player.yHeadRot = yHeadRot;
     }
 }
