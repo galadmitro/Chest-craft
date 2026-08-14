@@ -52,12 +52,12 @@ public class LockIn2DScreen extends Screen {
     // Torso rotation state
     private static float currentBodyYaw = 0.0f;
 
-    // Physics Constants
+    // Tuned Physics Constants for Organic Smooth Movement
     private static final float GRAVITY = 0.42f;
     private static final float JUMP_STRENGTH = -4.3f;
-    private static final float ACCELERATION = 0.70f;
-    private static final float FRICTION = 0.75f;
-    private static final float MAX_SPEED = 2.20f;
+    private static final float ACCELERATION = 0.45f; // Smooth acceleration ramp
+    private static final float FRICTION = 0.80f;     // Natural deceleration inertia
+    private static final float MAX_SPEED = 2.00f;     // Smooth max walk speed
     private static final int PLAYER_SCALE = 18;
 
     // Key States
@@ -135,7 +135,7 @@ public class LockIn2DScreen extends Screen {
         float gridStartX = guiX + 8;
         float gridStartY = guiY + 18;
 
-        // 1. Horizontal Movement & Grid Collision
+        // 1. Horizontal Movement & Smooth Inertia
         if (keyLeft) velocityX -= ACCELERATION;
         if (keyRight) velocityX += ACCELERATION;
         velocityX *= FRICTION;
@@ -158,7 +158,7 @@ public class LockIn2DScreen extends Screen {
         if (playerX < minX) { playerX = minX; velocityX = 0; }
         if (playerX > maxX) { playerX = maxX; velocityX = 0; }
 
-        // 2. Vertical Movement & Grid Collision
+        // 2. Vertical Movement & Collision
         if (keyJump && isOnGround) {
             velocityY = JUMP_STRENGTH;
             isOnGround = false;
@@ -255,7 +255,7 @@ public class LockIn2DScreen extends Screen {
             keyRight = true;
             return true;
         }
-        // ONLY Space bar triggers Jump (W key disabled for jump)
+        // ONLY Space key triggers jump (W/Up Key disabled)
         if (keyCode == GLFW.GLFW_KEY_SPACE) {
             keyJump = true;
             return true;
@@ -293,7 +293,7 @@ public class LockIn2DScreen extends Screen {
     }
 
     public static void render2DScene(GuiGraphics guiGraphics, int screenWidth, int screenHeight, int mouseX, int mouseY, float partialTick) {
-        // Background
+        // Dirt Background
         int tileSize = 16;
         for (int x = 0; x < screenWidth; x += tileSize) {
             for (int y = 0; y < screenHeight; y += tileSize) {
@@ -309,7 +309,7 @@ public class LockIn2DScreen extends Screen {
         // Chest GUI
         guiGraphics.blit(CHEST_GUI_TEXTURE, guiX, guiY, 0, 0, CHEST_W, CHEST_H, 256, 256);
 
-        // Dynamic Tile Grid Blocks
+        // Render Dynamic Tile Grid Blocks
         ItemStack grassStack = new ItemStack(Items.GRASS_BLOCK);
         for (int r = 0; r < ROWS; r++) {
             for (int c = 0; c < COLS; c++) {
@@ -321,23 +321,23 @@ public class LockIn2DScreen extends Screen {
             }
         }
 
-        // Exact Floating-Point Interpolated Coordinates (Sub-pixel rendering)
+        // Sub-Pixel Float Coordinates
         float smoothX = Mth.lerp(partialTick, prevPlayerX, playerX);
         float smoothY = Mth.lerp(partialTick, prevPlayerY, playerY);
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
-            // Replicate player's walk limb animation in real time based on actual horizontal delta
-            float speed = Math.abs(playerX - prevPlayerX);
-            player.walkAnimation.update(speed * 1.5f, 0.4f);
+            // Update limb animations based on actual delta speed
+            float walkDelta = Math.abs(playerX - prevPlayerX);
+            player.walkAnimation.update(walkDelta * 1.6f, 0.4f);
 
-            // Save state
+            // Save Vanilla Rotations
             float oldYRot = player.getYRot();
             float oldXRot = player.getXRot();
             float oldYHeadRot = player.yHeadRot;
             float oldYBodyRot = player.yBodyRotO;
 
-            // Head & Cursor Alignment
+            // Align Head & Torso with Mouse
             float eyeY = smoothY - 21.0f;
             float dx = mouseX - smoothX;
             float dy = mouseY - eyeY;
@@ -356,36 +356,39 @@ public class LockIn2DScreen extends Screen {
             player.yHeadRot = targetHeadYaw;
             player.yBodyRot = currentBodyYaw;
 
-            // Render via Matrix Pose Stack for true subpixel precision (no integer truncation)
+            // Render Player with positive Z offset (+100.0f) to fix invisibility
             guiGraphics.pose().pushPose();
-            guiGraphics.pose().translate(smoothX, smoothY, 0.0f);
+            guiGraphics.pose().translate(smoothX, smoothY, 100.0f);
+
+            // Compute mouse coordinates relative to the translated origin
+            float relMouseX = (float) mouseX - smoothX;
+            float relMouseY = (float) mouseY - eyeY;
 
             InventoryScreen.renderEntityInInventoryFollowsMouse(
                     guiGraphics,
                     -25, -42, 25, 0,
                     PLAYER_SCALE,
                     0.0625f,
-                    mouseX - (int) smoothX,
-                    mouseY - (int) smoothY,
+                    relMouseX,
+                    relMouseY,
                     player
             );
 
             guiGraphics.pose().popPose();
 
-            // Restore state
+            // Restore Vanilla Rotations
             player.setYRot(oldYRot);
             player.setXRot(oldXRot);
             player.yHeadRot = oldYHeadRot;
             player.yBodyRot = oldYBodyRot;
 
-            // Elevated Nametag Render
+            // Elevated Nametag (+100.0f Z offset to match entity)
             if (Config.SHOW_NAMETAG.get()) {
                 Component name = player.getDisplayName();
                 int textWidth = Minecraft.getInstance().font.width(name);
 
                 guiGraphics.pose().pushPose();
-                // Shifted Y offset up (-52.0f) so it rests comfortably above the head
-                guiGraphics.pose().translate(smoothX, smoothY - 52.0f, 0.0f);
+                guiGraphics.pose().translate(smoothX, smoothY - 52.0f, 100.0f);
                 guiGraphics.pose().scale(0.60f, 0.60f, 1.0f);
 
                 int scaledX = -(textWidth / 2);
