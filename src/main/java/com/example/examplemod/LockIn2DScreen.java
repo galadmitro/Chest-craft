@@ -1,14 +1,11 @@
 package com.example.examplemod;
 
-import com.mojang.blaze3d.platform.Lighting;
-import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.client.tutorial.TutorialSteps;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -16,7 +13,6 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Quaternionf;
 import org.lwjgl.glfw.GLFW;
 
 public class LockIn2DScreen extends Screen {
@@ -45,6 +41,8 @@ public class LockIn2DScreen extends Screen {
     private static double startWorldY = Double.NaN;
     private static double startWorldZ = Double.NaN;
 
+    private static final int PLAYER_SCALE = 18;
+
     // Key States
     private boolean keyLeft = false;
     private boolean keyRight = false;
@@ -62,6 +60,9 @@ public class LockIn2DScreen extends Screen {
             this.minecraft.getTutorial().setStep(TutorialSteps.NONE);
             this.minecraft.getSoundManager().pause();
             this.minecraft.options.menuBackgroundBlurriness().set(0);
+            if (this.minecraft.gameRenderer != null) {
+                this.minecraft.gameRenderer.shutdownEffect();
+            }
 
             LocalPlayer player = this.minecraft.player;
             if (player != null && Double.isNaN(startWorldX)) {
@@ -94,16 +95,13 @@ public class LockIn2DScreen extends Screen {
     public void tick() {
         super.tick();
 
-        if (this.minecraft != null) {
-            this.minecraft.options.menuBackgroundBlurriness().set(0);
+        if (this.minecraft != null && this.minecraft.player != null) {
             LocalPlayer player = this.minecraft.player;
-            if (player != null) {
-                player.getAbilities().invulnerable = true;
-                player.setHealth(player.getMaxHealth());
-                player.getFoodData().setFoodLevel(20);
+            player.getAbilities().invulnerable = true;
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
 
-                updateRealPlayerPhysics(player);
-            }
+            updateRealPlayerPhysics(player);
         }
     }
 
@@ -175,17 +173,12 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        if (this.minecraft != null && this.minecraft.gameRenderer != null) {
-            this.minecraft.gameRenderer.shutdownEffect();
-        }
-
         render2DScene(guiGraphics, this.width, this.height, mouseX, mouseY, partialTick);
-
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
 
     public static void render2DScene(GuiGraphics guiGraphics, int screenWidth, int screenHeight, int mouseX, int mouseY, float partialTick) {
-        // Dirt Background
+        // Background Tiling
         int tileSize = 16;
         for (int x = 0; x < screenWidth; x += tileSize) {
             for (int y = 0; y < screenHeight; y += tileSize) {
@@ -215,27 +208,41 @@ public class LockIn2DScreen extends Screen {
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null && !Double.isNaN(startWorldX)) {
-            // Calculate interpolated real world displacement
+            // Smooth Sub-pixel Interpolation
             double lerpWorldX = Mth.lerp(partialTick, player.xo, player.getX());
             double lerpWorldY = Mth.lerp(partialTick, player.yo, player.getY());
 
             double deltaX = lerpWorldX - startWorldX;
             double deltaY = lerpWorldY - startWorldY;
 
-            // Map real-world displacement to chest grid coordinates
+            // Map World displacement directly to Chest coordinates
             float baseChestX = guiX + (CHEST_W / 2.0f);
             float baseChestY = gridStartY + (5 * SECTION_SIZE);
 
             float smoothX = baseChestX + (float) (deltaX * SECTION_SIZE);
             float smoothY = baseChestY - (float) (deltaY * SECTION_SIZE);
 
-            // Bounds clamping inside chest
+            // Screen Bounds Clamping
             float minX = gridStartX + 8.0f;
             float maxX = gridStartX + (COLS * SECTION_SIZE) - 8.0f;
             smoothX = Mth.clamp(smoothX, minX, maxX);
 
-            // Render REAL player model directly with full live walk/jump animations
-            renderLivePlayerModel(guiGraphics, smoothX, smoothY, 20, player, partialTick);
+            // Bounding box mapping for optimized inventory renderer
+            int x1 = (int) (smoothX - 25);
+            int y1 = (int) (smoothY - 45);
+            int x2 = (int) (smoothX + 25);
+            int y2 = (int) smoothY;
+
+            // Optimized entity rendering: preserves live walk/jump animations while following mouse smoothly
+            InventoryScreen.renderEntityInInventoryFollowsMouse(
+                    guiGraphics,
+                    x1, y1, x2, y2,
+                    PLAYER_SCALE,
+                    0.0625f,
+                    (float) mouseX,
+                    (float) mouseY,
+                    player
+            );
 
             // Elevated Nametag Render
             if (Config.SHOW_NAMETAG.get()) {
@@ -243,7 +250,7 @@ public class LockIn2DScreen extends Screen {
                 int textWidth = Minecraft.getInstance().font.width(name);
 
                 guiGraphics.pose().pushPose();
-                guiGraphics.pose().translate(smoothX, smoothY - 48.0f, 200.0f);
+                guiGraphics.pose().translate(smoothX, smoothY - 48.0f, 100.0f);
                 guiGraphics.pose().scale(0.60f, 0.60f, 1.0f);
 
                 int scaledX = -(textWidth / 2);
@@ -255,39 +262,5 @@ public class LockIn2DScreen extends Screen {
                 guiGraphics.pose().popPose();
             }
         }
-    }
-
-    private static void renderLivePlayerModel(GuiGraphics guiGraphics, float x, float y, int scale, LocalPlayer player, float partialTick) {
-        guiGraphics.pose().pushPose();
-        guiGraphics.pose().translate(x, y, 150.0F);
-        guiGraphics.pose().scale((float) scale, (float) scale, (float) scale);
-
-        // Align facing angle straight toward camera in 2D chest GUI
-        guiGraphics.pose().mulPose(Axis.ZP.rotationDegrees(180.0F));
-        guiGraphics.pose().mulPose(Axis.YP.rotationDegrees(180.0F));
-
-        Lighting.setupForEntityInInventory(new Quaternionf());
-
-        EntityRenderDispatcher dispatcher = Minecraft.getInstance().getEntityRenderDispatcher();
-        dispatcher.setRenderShadow(false);
-
-        MultiBufferSource.BufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
-
-        // Direct Entity Render Call (preserves real leg/arm walk animations & jump physics)
-        dispatcher.render(
-                player,
-                0.0, 0.0, 0.0,
-                0.0F,
-                partialTick,
-                guiGraphics.pose(),
-                bufferSource,
-                15728880
-        );
-
-        bufferSource.endBatch();
-        dispatcher.setRenderShadow(true);
-        Lighting.setupFor3DItems();
-
-        guiGraphics.pose().popPose();
     }
 }

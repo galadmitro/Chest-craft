@@ -35,13 +35,6 @@ public class ClientModEvents {
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null && mc.level != null) {
-            mc.getTutorial().setStep(TutorialSteps.NONE);
-            mc.options.menuBackgroundBlurriness().set(0);
-
-            if (mc.gameRenderer != null) {
-                mc.gameRenderer.shutdownEffect();
-            }
-
             if (mc.screen == null) {
                 mc.setScreen(new LockIn2DScreen());
             }
@@ -56,11 +49,6 @@ public class ClientModEvents {
 
     @SubscribeEvent
     public static void onScreenRenderPre(ScreenEvent.Render.Pre event) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.gameRenderer != null) {
-            mc.gameRenderer.shutdownEffect();
-        }
-
         if (event.getScreen() instanceof PauseScreen) {
             LockIn2DScreen.render2DScene(
                     event.getGuiGraphics(),
