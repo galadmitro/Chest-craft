@@ -60,9 +60,6 @@ public class LockIn2DScreen extends Screen {
             this.minecraft.getTutorial().setStep(TutorialSteps.NONE);
             this.minecraft.getSoundManager().pause();
             this.minecraft.options.menuBackgroundBlurriness().set(0);
-            if (this.minecraft.gameRenderer != null) {
-                this.minecraft.gameRenderer.shutdownEffect();
-            }
 
             LocalPlayer player = this.minecraft.player;
             if (player != null && Double.isNaN(startWorldX)) {
@@ -106,6 +103,20 @@ public class LockIn2DScreen extends Screen {
     }
 
     private void updateRealPlayerPhysics(LocalPlayer player) {
+        if (Double.isNaN(startWorldX)) return;
+
+        int guiX = (this.width - CHEST_W) / 2;
+        float gridStartX = guiX + 8;
+
+        // Chest grid border limits (in pixels)
+        float minScreenX = gridStartX + 10.0f;
+        float maxScreenX = gridStartX + (COLS * SECTION_SIZE) - 10.0f;
+        float baseChestX = guiX + (CHEST_W / 2.0f);
+
+        // Convert screen pixel limits to exact 3D world offsets
+        double minWorldX = startWorldX + (minScreenX - baseChestX) / SECTION_SIZE;
+        double maxWorldX = startWorldX + (maxScreenX - baseChestX) / SECTION_SIZE;
+
         Vec3 vel = player.getDeltaMovement();
         double moveSpeed = 0.22;
         double targetVX = 0;
@@ -113,10 +124,21 @@ public class LockIn2DScreen extends Screen {
         if (keyLeft) targetVX = -moveSpeed;
         if (keyRight) targetVX = moveSpeed;
 
-        // Apply real horizontal movement to actual player
+        // Clamp 3D position BEFORE applying movement to prevent wall clipping
+        double currentX = player.getX();
+        if (currentX <= minWorldX && targetVX < 0) {
+            targetVX = 0;
+            player.setPos(minWorldX, player.getY(), startWorldZ);
+        } else if (currentX >= maxWorldX && targetVX > 0) {
+            targetVX = 0;
+            player.setPos(maxWorldX, player.getY(), startWorldZ);
+        }
+
+        // Lock depth on Z axis to prevent 3D jitter
+        player.setPos(Mth.clamp(player.getX(), minWorldX, maxWorldX), player.getY(), startWorldZ);
         player.setDeltaMovement(targetVX, vel.y, 0);
 
-        // Real jump using vanilla physics
+        // Jump physics
         if (keyJump && player.onGround()) {
             player.jumpFromGround();
         }
@@ -178,7 +200,7 @@ public class LockIn2DScreen extends Screen {
     }
 
     public static void render2DScene(GuiGraphics guiGraphics, int screenWidth, int screenHeight, int mouseX, int mouseY, float partialTick) {
-        // Background Tiling
+        // Dirt Background Tiling
         int tileSize = 16;
         for (int x = 0; x < screenWidth; x += tileSize) {
             for (int y = 0; y < screenHeight; y += tileSize) {
@@ -208,32 +230,32 @@ public class LockIn2DScreen extends Screen {
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null && !Double.isNaN(startWorldX)) {
-            // Smooth Sub-pixel Interpolation
+            // Smooth Sub-pixel Interpolation via partialTick
             double lerpWorldX = Mth.lerp(partialTick, player.xo, player.getX());
             double lerpWorldY = Mth.lerp(partialTick, player.yo, player.getY());
 
             double deltaX = lerpWorldX - startWorldX;
             double deltaY = lerpWorldY - startWorldY;
 
-            // Map World displacement directly to Chest coordinates
+            // Map 3D world position to 2D screen coordinates
             float baseChestX = guiX + (CHEST_W / 2.0f);
             float baseChestY = gridStartY + (5 * SECTION_SIZE);
 
             float smoothX = baseChestX + (float) (deltaX * SECTION_SIZE);
             float smoothY = baseChestY - (float) (deltaY * SECTION_SIZE);
 
-            // Screen Bounds Clamping
-            float minX = gridStartX + 8.0f;
-            float maxX = gridStartX + (COLS * SECTION_SIZE) - 8.0f;
+            // Strict boundary clamping on screen
+            float minX = gridStartX + 10.0f;
+            float maxX = gridStartX + (COLS * SECTION_SIZE) - 10.0f;
             smoothX = Mth.clamp(smoothX, minX, maxX);
 
-            // Bounding box mapping for optimized inventory renderer
+            // Bounding box for render
             int x1 = (int) (smoothX - 25);
             int y1 = (int) (smoothY - 45);
             int x2 = (int) (smoothX + 25);
             int y2 = (int) smoothY;
 
-            // Optimized entity rendering: preserves live walk/jump animations while following mouse smoothly
+            // Render live player with head cursor tracking and smooth walking animations
             InventoryScreen.renderEntityInInventoryFollowsMouse(
                     guiGraphics,
                     x1, y1, x2, y2,
@@ -244,7 +266,7 @@ public class LockIn2DScreen extends Screen {
                     player
             );
 
-            // Elevated Nametag Render
+            // Elevated Nametag
             if (Config.SHOW_NAMETAG.get()) {
                 Component name = player.getDisplayName();
                 int textWidth = Minecraft.getInstance().font.width(name);
