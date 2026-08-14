@@ -47,6 +47,10 @@ public class LockIn2DScreen extends Screen {
     private boolean keyRight = false;
     private boolean keyJump = false;
 
+    // Smooth visual turning for the character model
+    private float visualYaw = 180.0f;
+    private float oVisualYaw = 180.0f;
+
     public LockIn2DScreen() {
         super(Component.literal("2D Chest World"));
     }
@@ -74,6 +78,10 @@ public class LockIn2DScreen extends Screen {
         super.removed();
         if (this.minecraft != null) {
             this.minecraft.getSoundManager().resume();
+            if (this.minecraft.player != null) {
+                // Restore standard world physics when closing the GUI
+                this.minecraft.player.noPhysics = false; 
+            }
         }
     }
 
@@ -97,6 +105,9 @@ public class LockIn2DScreen extends Screen {
             player.setHealth(player.getMaxHealth());
             player.getFoodData().setFoodLevel(20);
 
+            // Detach from 3D world collision friction so movement is buttery smooth
+            player.noPhysics = true; 
+
             updateRealPlayerPhysics(player);
         }
     }
@@ -107,38 +118,66 @@ public class LockIn2DScreen extends Screen {
         int guiX = (this.width - CHEST_W) / 2;
         float gridStartX = guiX + 8;
 
-        // Chest bounds
         float minScreenX = gridStartX + 10.0f;
         float maxScreenX = gridStartX + (COLS * SECTION_SIZE) - 10.0f;
         float baseChestX = guiX + (CHEST_W / 2.0f);
 
-        // Map to world positions
         double minWorldX = startWorldX + (minScreenX - baseChestX) / SECTION_SIZE;
         double maxWorldX = startWorldX + (maxScreenX - baseChestX) / SECTION_SIZE;
 
+        Vec3 pos = player.position();
+        double currentX = pos.x;
+        double currentY = pos.y;
         Vec3 vel = player.getDeltaMovement();
-        double moveSpeed = 0.22;
+
         double targetVX = 0;
+        if (keyLeft) targetVX = -0.25;
+        if (keyRight) targetVX = 0.25;
 
-        if (keyLeft) targetVX = -moveSpeed;
-        if (keyRight) targetVX = moveSpeed;
+        // Smooth velocity interpolation (X-axis)
+        double vx = Mth.lerp(0.35, vel.x, targetVX);
 
-        // Prevent wall clipping by hard-stopping velocity before boundary
-        double currentX = player.getX();
-        if (currentX <= minWorldX && targetVX < 0) {
-            targetVX = 0;
-            player.setPos(minWorldX, player.getY(), startWorldZ);
-        } else if (currentX >= maxWorldX && targetVX > 0) {
-            targetVX = 0;
-            player.setPos(maxWorldX, player.getY(), startWorldZ);
+        // Custom gravity (Y-axis)
+        double vy = vel.y;
+        vy -= 0.08; // Gravity fall
+        vy *= 0.98; // Drag
+
+        double nextX = currentX + vx;
+        double nextY = currentY + vy;
+
+        // Floor collision
+        boolean onGround = false;
+        if (nextY <= startWorldY) {
+            nextY = startWorldY;
+            vy = 0.0;
+            onGround = true;
         }
 
-        player.setPos(Mth.clamp(player.getX(), minWorldX, maxWorldX), player.getY(), startWorldZ);
-        player.setDeltaMovement(targetVX, vel.y, 0);
-
-        if (keyJump && player.onGround()) {
-            player.jumpFromGround();
+        // Chest wall boundaries
+        if (nextX <= minWorldX) {
+            nextX = minWorldX;
+            vx = 0.0;
+        } else if (nextX >= maxWorldX) {
+            nextX = maxWorldX;
+            vx = 0.0;
         }
+
+        if (keyJump && onGround) {
+            vy = 0.42;
+        }
+
+        // Apply updated positions and velocities cleanly
+        player.setPos(nextX, nextY, startWorldZ);
+        player.setDeltaMovement(vx, vy, 0);
+        player.setOnGround(onGround);
+
+        // Update visual model rotation
+        oVisualYaw = visualYaw;
+        float targetVisualYaw = 180.0f; // Default facing camera
+        if (keyLeft) targetVisualYaw = 90.0f;  // Face left
+        else if (keyRight) targetVisualYaw = 270.0f; // Face right
+
+        visualYaw = Mth.approachDegrees(visualYaw, targetVisualYaw, 25.0f);
     }
 
     @Override
@@ -192,11 +231,11 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        render2DScene(guiGraphics, this.width, this.height, mouseX, mouseY, partialTick);
+        render2DScene(guiGraphics, this.width, this.height, partialTick);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
 
-    public static void render2DScene(GuiGraphics guiGraphics, int screenWidth, int screenHeight, int mouseX, int mouseY, float partialTick) {
+    private void render2DScene(GuiGraphics guiGraphics, int screenWidth, int screenHeight, float partialTick) {
         int tileSize = 16;
         for (int x = 0; x < screenWidth; x += tileSize) {
             for (int y = 0; y < screenHeight; y += tileSize) {
@@ -224,7 +263,7 @@ public class LockIn2DScreen extends Screen {
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null && !Double.isNaN(startWorldX)) {
-            // Uncapped sub-pixel interpolation
+            // High-Hz float interpolation from raw world coordinates
             double lerpWorldX = Mth.lerp(partialTick, player.xo, player.getX());
             double lerpWorldY = Mth.lerp(partialTick, player.yo, player.getY());
 
@@ -241,8 +280,9 @@ public class LockIn2DScreen extends Screen {
             float maxX = gridStartX + (COLS * SECTION_SIZE) - 10.0f;
             smoothX = Mth.clamp(smoothX, minX, maxX);
 
-            // Directly inject sub-pixel coordinates to custom float renderer
-            renderSubPixelPlayerWithTracking(guiGraphics, smoothX, smoothY, PLAYER_SCALE, mouseX, mouseY, player, partialTick);
+            float lerpedYaw = Mth.lerp(partialTick, oVisualYaw, visualYaw);
+
+            renderPerfectPlayer(guiGraphics, smoothX, smoothY, PLAYER_SCALE, lerpedYaw, player, partialTick);
 
             if (Config.SHOW_NAMETAG.get()) {
                 Component name = player.getDisplayName();
@@ -263,55 +303,58 @@ public class LockIn2DScreen extends Screen {
         }
     }
 
-    // Custom method bypasses InventoryScreen.class entirely to accept true float positions
-    private static void renderSubPixelPlayerWithTracking(GuiGraphics guiGraphics, float x, float y, float scale, float mouseX, float mouseY, LocalPlayer player, float partialTick) {
-        float lookX = (float) Math.atan((x - mouseX) / 40.0f);
-        float lookY = (float) Math.atan((y - (scale * 1.5f) - mouseY) / 40.0f);
-
+    private static void renderPerfectPlayer(GuiGraphics guiGraphics, float x, float y, float scale, float visualYaw, LocalPlayer player, float partialTick) {
         guiGraphics.pose().pushPose();
-        // Applies the precise floating-point coordinate visually bypassing int cast limits
+        
+        // Exact sub-pixel positioning
         guiGraphics.pose().translate(x, y, 150.0f); 
         guiGraphics.pose().scale(scale, scale, -scale);
 
-        guiGraphics.pose().mulPose(Axis.ZP.rotationDegrees(180.0F));
-        guiGraphics.pose().mulPose(Axis.XP.rotationDegrees(lookY * 20.0F));
+        // Apply turning rotation
+        guiGraphics.pose().mulPose(Axis.YP.rotationDegrees(visualYaw));
 
-        // Preserve states
+        // Save original states so we don't break the real 3D entity
         float yBodyRotO = player.yBodyRotO;
         float yBodyRot = player.yBodyRot;
+        float yRotO = player.yRotO;
         float yRot = player.getYRot();
+        float xRotO = player.xRotO;
         float xRot = player.getXRot();
         float yHeadRotO = player.yHeadRotO;
         float yHeadRot = player.yHeadRot;
 
-        // Apply mouse tracking manually
-        player.yBodyRot = 180.0F + lookX * 20.0F;
-        player.setYRot(180.0F + lookX * 40.0F);
-        player.setXRot(-lookY * 20.0F);
-        player.yHeadRot = player.getYRot();
-        player.yHeadRotO = player.getYRot();
+        // Force all body parts forward locally so the matrix rotation dictates facing direction cleanly
+        player.yBodyRotO = 0;
+        player.yBodyRot = 0;
+        player.yRotO = 0;
+        player.setYRot(0);
+        player.xRotO = 0;
+        player.setXRot(0);
+        player.yHeadRotO = 0;
+        player.yHeadRot = 0;
 
         Lighting.setupForEntityInInventory(new Quaternionf());
 
         EntityRenderDispatcher dispatcher = Minecraft.getInstance().getEntityRenderDispatcher();
         dispatcher.setRenderShadow(false);
-
         MultiBufferSource.BufferSource buffers = Minecraft.getInstance().renderBuffers().bufferSource();
 
         dispatcher.render(player, 0.0D, 0.0D, 0.0D, 0.0F, partialTick, guiGraphics.pose(), buffers, 15728880);
 
         buffers.endBatch();
         dispatcher.setRenderShadow(true);
-        guiGraphics.pose().popPose();
-
         Lighting.setupFor3DItems();
 
         // Restore original states
         player.yBodyRotO = yBodyRotO;
         player.yBodyRot = yBodyRot;
+        player.yRotO = yRotO;
         player.setYRot(yRot);
+        player.xRotO = xRotO;
         player.setXRot(xRot);
         player.yHeadRotO = yHeadRotO;
         player.yHeadRot = yHeadRot;
+        
+        guiGraphics.pose().popPose();
     }
 }
