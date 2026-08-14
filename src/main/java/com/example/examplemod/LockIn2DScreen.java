@@ -24,14 +24,14 @@ public class LockIn2DScreen extends Screen {
     public static final int CHEST_H = 222;
     public static final float SECTION_SIZE = 18.0f;
 
-    // Grid (6 Rows x 9 Columns)
+    // Grid System (6 Rows x 9 Columns)
     public static final int ROWS = 6;
     public static final int COLS = 9;
     public static final int[][] TILE_GRID = new int[ROWS][COLS];
 
     static {
         for (int c = 0; c < COLS; c++) {
-            TILE_GRID[5][c] = 1;
+            TILE_GRID[5][c] = 1; // Floor row
         }
     }
 
@@ -39,7 +39,7 @@ public class LockIn2DScreen extends Screen {
     public static final float PLAYER_WIDTH = 10.0f;
     public static final float PLAYER_HEIGHT = 28.0f;
 
-    // Movement & Subpixel Interpolation States
+    // Movement & Lerp Positions
     public static float playerX = 0;
     public static float playerY = 0;
     public static float prevPlayerX = 0;
@@ -49,15 +49,15 @@ public class LockIn2DScreen extends Screen {
     private float velocityY = 0;
     private boolean isOnGround = false;
 
-    // Torso rotation state
+    // Torso state
     private static float currentBodyYaw = 0.0f;
 
-    // Tuned Physics Constants for Organic Smooth Movement
+    // Responsive Physics Constants
     private static final float GRAVITY = 0.42f;
     private static final float JUMP_STRENGTH = -4.3f;
-    private static final float ACCELERATION = 0.45f; // Smooth acceleration ramp
-    private static final float FRICTION = 0.80f;     // Natural deceleration inertia
-    private static final float MAX_SPEED = 2.00f;     // Smooth max walk speed
+    private static final float ACCELERATION = 0.85f;
+    private static final float FRICTION = 0.70f;
+    private static final float MAX_SPEED = 2.40f;
     private static final int PLAYER_SCALE = 18;
 
     // Key States
@@ -135,7 +135,7 @@ public class LockIn2DScreen extends Screen {
         float gridStartX = guiX + 8;
         float gridStartY = guiY + 18;
 
-        // 1. Horizontal Movement & Smooth Inertia
+        // 1. Horizontal Movement
         if (keyLeft) velocityX -= ACCELERATION;
         if (keyRight) velocityX += ACCELERATION;
         velocityX *= FRICTION;
@@ -152,13 +152,13 @@ public class LockIn2DScreen extends Screen {
             velocityX = 0;
         }
 
-        // Screen boundary walls
+        // Screen boundary limits
         float minX = gridStartX + (PLAYER_WIDTH / 2.0f);
         float maxX = gridStartX + (COLS * SECTION_SIZE) - (PLAYER_WIDTH / 2.0f);
         if (playerX < minX) { playerX = minX; velocityX = 0; }
         if (playerX > maxX) { playerX = maxX; velocityX = 0; }
 
-        // 2. Vertical Movement & Collision
+        // 2. Jump & Gravity
         if (keyJump && isOnGround) {
             velocityY = JUMP_STRENGTH;
             isOnGround = false;
@@ -255,7 +255,7 @@ public class LockIn2DScreen extends Screen {
             keyRight = true;
             return true;
         }
-        // ONLY Space key triggers jump (W/Up Key disabled)
+        // Strict Jump: Spacebar only
         if (keyCode == GLFW.GLFW_KEY_SPACE) {
             keyJump = true;
             return true;
@@ -306,10 +306,10 @@ public class LockIn2DScreen extends Screen {
         float gridStartX = guiX + 8;
         float gridStartY = guiY + 18;
 
-        // Chest GUI
+        // Double Chest GUI
         guiGraphics.blit(CHEST_GUI_TEXTURE, guiX, guiY, 0, 0, CHEST_W, CHEST_H, 256, 256);
 
-        // Render Dynamic Tile Grid Blocks
+        // Tile Grid Grass Blocks
         ItemStack grassStack = new ItemStack(Items.GRASS_BLOCK);
         for (int r = 0; r < ROWS; r++) {
             for (int c = 0; c < COLS; c++) {
@@ -321,23 +321,19 @@ public class LockIn2DScreen extends Screen {
             }
         }
 
-        // Sub-Pixel Float Coordinates
+        // Precise Frame Interpolation
         float smoothX = Mth.lerp(partialTick, prevPlayerX, playerX);
         float smoothY = Mth.lerp(partialTick, prevPlayerY, playerY);
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
-            // Update limb animations based on actual delta speed
-            float walkDelta = Math.abs(playerX - prevPlayerX);
-            player.walkAnimation.update(walkDelta * 1.6f, 0.4f);
-
-            // Save Vanilla Rotations
+            // Rotations state backup
             float oldYRot = player.getYRot();
             float oldXRot = player.getXRot();
             float oldYHeadRot = player.yHeadRot;
             float oldYBodyRot = player.yBodyRotO;
 
-            // Align Head & Torso with Mouse
+            // Head and Body Mouse Tracking
             float eyeY = smoothY - 21.0f;
             float dx = mouseX - smoothX;
             float dy = mouseY - eyeY;
@@ -349,46 +345,42 @@ public class LockIn2DScreen extends Screen {
             if (Math.abs(headBodyDiff) > 40.0f) {
                 currentBodyYaw += (headBodyDiff > 0 ? headBodyDiff - 40.0f : headBodyDiff + 40.0f);
             }
-            currentBodyYaw = Mth.lerp(0.15f, currentBodyYaw, targetHeadYaw);
+            currentBodyYaw = Mth.lerp(0.20f, currentBodyYaw, targetHeadYaw);
 
             player.setYRot(currentBodyYaw);
             player.setXRot(-targetPitch);
             player.yHeadRot = targetHeadYaw;
             player.yBodyRot = currentBodyYaw;
 
-            // Render Player with positive Z offset (+100.0f) to fix invisibility
-            guiGraphics.pose().pushPose();
-            guiGraphics.pose().translate(smoothX, smoothY, 100.0f);
-
-            // Compute mouse coordinates relative to the translated origin
-            float relMouseX = (float) mouseX - smoothX;
-            float relMouseY = (float) mouseY - eyeY;
+            // Direct Bounding Box Coordinates (Fixes Invisibility)
+            int x1 = (int) (smoothX - 25);
+            int y1 = (int) (smoothY - 45);
+            int x2 = (int) (smoothX + 25);
+            int y2 = (int) smoothY;
 
             InventoryScreen.renderEntityInInventoryFollowsMouse(
                     guiGraphics,
-                    -25, -42, 25, 0,
+                    x1, y1, x2, y2,
                     PLAYER_SCALE,
                     0.0625f,
-                    relMouseX,
-                    relMouseY,
+                    (float) mouseX,
+                    (float) mouseY,
                     player
             );
 
-            guiGraphics.pose().popPose();
-
-            // Restore Vanilla Rotations
+            // Restore Vanilla State
             player.setYRot(oldYRot);
             player.setXRot(oldXRot);
             player.yHeadRot = oldYHeadRot;
             player.yBodyRot = oldYBodyRot;
 
-            // Elevated Nametag (+100.0f Z offset to match entity)
+            // Elevated Nametag Render
             if (Config.SHOW_NAMETAG.get()) {
                 Component name = player.getDisplayName();
                 int textWidth = Minecraft.getInstance().font.width(name);
 
                 guiGraphics.pose().pushPose();
-                guiGraphics.pose().translate(smoothX, smoothY - 52.0f, 100.0f);
+                guiGraphics.pose().translate(smoothX, smoothY - 52.0f, 0.0f);
                 guiGraphics.pose().scale(0.60f, 0.60f, 1.0f);
 
                 int scaledX = -(textWidth / 2);
