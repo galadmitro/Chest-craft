@@ -249,22 +249,28 @@ public class LockIn2DScreen extends Screen {
             float maxX = gridStartX + (COLS * SECTION_SIZE) - 10.0f;
             smoothX = Mth.clamp(smoothX, minX, maxX);
 
-            // Pure float sub-pixel bounds (NO INTEGER CASTING)
-            float x1 = smoothX - 25.0f;
-            float y1 = smoothY - 45.0f;
-            float x2 = smoothX + 25.0f;
-            float y2 = smoothY;
+            // Extract integer baseline and sub-pixel float remainder
+            int intX = (int) Math.floor(smoothX);
+            int intY = (int) Math.floor(smoothY);
+            float fracX = smoothX - intX;
+            float fracY = smoothY - intY;
 
-            // Render live player with sub-pixel precision and cursor head tracking
+            // Matrix translation handles sub-pixel precision while passing int arguments to MC renderer
+            guiGraphics.pose().pushPose();
+            guiGraphics.pose().translate(fracX, fracY, 0.0f);
+
             InventoryScreen.renderEntityInInventoryFollowsMouse(
                     guiGraphics,
-                    x1, y1, x2, y2,
+                    intX - 25, intY - 45,
+                    intX + 25, intY,
                     PLAYER_SCALE,
                     0.0625f,
-                    (float) mouseX,
-                    (float) mouseY,
+                    (float) mouseX - fracX,
+                    (float) mouseY - fracY,
                     player
             );
+
+            guiGraphics.pose().popPose();
 
             // Elevated Nametag
             if (Config.SHOW_NAMETAG.get()) {
