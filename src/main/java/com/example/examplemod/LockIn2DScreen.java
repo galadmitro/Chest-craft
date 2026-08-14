@@ -47,7 +47,6 @@ public class LockIn2DScreen extends Screen {
     private boolean keyRight = false;
     private boolean keyJump = false;
 
-    // Smooth visual turning for the character model
     private float visualYaw = 180.0f;
     private float oVisualYaw = 180.0f;
 
@@ -79,7 +78,6 @@ public class LockIn2DScreen extends Screen {
         if (this.minecraft != null) {
             this.minecraft.getSoundManager().resume();
             if (this.minecraft.player != null) {
-                // Restore standard world physics when closing the GUI
                 this.minecraft.player.noPhysics = false; 
             }
         }
@@ -105,7 +103,6 @@ public class LockIn2DScreen extends Screen {
             player.setHealth(player.getMaxHealth());
             player.getFoodData().setFoodLevel(20);
 
-            // Detach from 3D world collision friction so movement is buttery smooth
             player.noPhysics = true; 
 
             updateRealPlayerPhysics(player);
@@ -134,18 +131,15 @@ public class LockIn2DScreen extends Screen {
         if (keyLeft) targetVX = -0.25;
         if (keyRight) targetVX = 0.25;
 
-        // Smooth velocity interpolation (X-axis)
         double vx = Mth.lerp(0.35, vel.x, targetVX);
 
-        // Custom gravity (Y-axis)
         double vy = vel.y;
-        vy -= 0.08; // Gravity fall
-        vy *= 0.98; // Drag
+        vy -= 0.08; 
+        vy *= 0.98; 
 
         double nextX = currentX + vx;
         double nextY = currentY + vy;
 
-        // Floor collision
         boolean onGround = false;
         if (nextY <= startWorldY) {
             nextY = startWorldY;
@@ -153,7 +147,6 @@ public class LockIn2DScreen extends Screen {
             onGround = true;
         }
 
-        // Chest wall boundaries
         if (nextX <= minWorldX) {
             nextX = minWorldX;
             vx = 0.0;
@@ -166,16 +159,14 @@ public class LockIn2DScreen extends Screen {
             vy = 0.42;
         }
 
-        // Apply updated positions and velocities cleanly
         player.setPos(nextX, nextY, startWorldZ);
         player.setDeltaMovement(vx, vy, 0);
         player.setOnGround(onGround);
 
-        // Update visual model rotation
         oVisualYaw = visualYaw;
-        float targetVisualYaw = 180.0f; // Default facing camera
-        if (keyLeft) targetVisualYaw = 90.0f;  // Face left
-        else if (keyRight) targetVisualYaw = 270.0f; // Face right
+        float targetVisualYaw = 180.0f; 
+        if (keyLeft) targetVisualYaw = 90.0f;  
+        else if (keyRight) targetVisualYaw = 270.0f; 
 
         visualYaw = Mth.approachDegrees(visualYaw, targetVisualYaw, 25.0f);
     }
@@ -231,11 +222,11 @@ public class LockIn2DScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        render2DScene(guiGraphics, this.width, this.height, partialTick);
+        render2DScene(guiGraphics, this.width, this.height, mouseX, mouseY, partialTick);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
 
-    private void render2DScene(GuiGraphics guiGraphics, int screenWidth, int screenHeight, float partialTick) {
+    public static void render2DScene(GuiGraphics guiGraphics, int screenWidth, int screenHeight, int mouseX, int mouseY, float partialTick) {
         int tileSize = 16;
         for (int x = 0; x < screenWidth; x += tileSize) {
             for (int y = 0; y < screenHeight; y += tileSize) {
@@ -263,7 +254,6 @@ public class LockIn2DScreen extends Screen {
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null && !Double.isNaN(startWorldX)) {
-            // High-Hz float interpolation from raw world coordinates
             double lerpWorldX = Mth.lerp(partialTick, player.xo, player.getX());
             double lerpWorldY = Mth.lerp(partialTick, player.yo, player.getY());
 
@@ -280,7 +270,14 @@ public class LockIn2DScreen extends Screen {
             float maxX = gridStartX + (COLS * SECTION_SIZE) - 10.0f;
             smoothX = Mth.clamp(smoothX, minX, maxX);
 
-            float lerpedYaw = Mth.lerp(partialTick, oVisualYaw, visualYaw);
+            // Access static or screen instance visualYaw safely via casting if needed, or pass it. 
+            // Since render2DScene is static, we can grab rotation from the active screen instance if available, 
+            // or fallback cleanly. Let's make it robust:
+            float lerpedYaw = 180.0f;
+            Screen currentScreen = Minecraft.getInstance().screen;
+            if (currentScreen instanceof LockIn2DScreen lockScreen) {
+                lerpedYaw = Mth.lerp(partialTick, lockScreen.oVisualYaw, lockScreen.visualYaw);
+            }
 
             renderPerfectPlayer(guiGraphics, smoothX, smoothY, PLAYER_SCALE, lerpedYaw, player, partialTick);
 
@@ -306,14 +303,11 @@ public class LockIn2DScreen extends Screen {
     private static void renderPerfectPlayer(GuiGraphics guiGraphics, float x, float y, float scale, float visualYaw, LocalPlayer player, float partialTick) {
         guiGraphics.pose().pushPose();
         
-        // Exact sub-pixel positioning
         guiGraphics.pose().translate(x, y, 150.0f); 
         guiGraphics.pose().scale(scale, scale, -scale);
 
-        // Apply turning rotation
         guiGraphics.pose().mulPose(Axis.YP.rotationDegrees(visualYaw));
 
-        // Save original states so we don't break the real 3D entity
         float yBodyRotO = player.yBodyRotO;
         float yBodyRot = player.yBodyRot;
         float yRotO = player.yRotO;
@@ -323,7 +317,6 @@ public class LockIn2DScreen extends Screen {
         float yHeadRotO = player.yHeadRotO;
         float yHeadRot = player.yHeadRot;
 
-        // Force all body parts forward locally so the matrix rotation dictates facing direction cleanly
         player.yBodyRotO = 0;
         player.yBodyRot = 0;
         player.yRotO = 0;
@@ -345,7 +338,6 @@ public class LockIn2DScreen extends Screen {
         dispatcher.setRenderShadow(true);
         Lighting.setupFor3DItems();
 
-        // Restore original states
         player.yBodyRotO = yBodyRotO;
         player.yBodyRot = yBodyRot;
         player.yRotO = yRotO;
