@@ -1,17 +1,22 @@
 package com.example.examplemod;
 
+import com.mojang.blaze3d.platform.Lighting;
+import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.client.tutorial.TutorialSteps;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Quaternionf;
 import org.lwjgl.glfw.GLFW;
 
 public class LockIn2DScreen extends Screen {
@@ -35,30 +40,10 @@ public class LockIn2DScreen extends Screen {
         }
     }
 
-    // Player AABB Bounds
-    public static final float PLAYER_WIDTH = 10.0f;
-    public static final float PLAYER_HEIGHT = 28.0f;
-
-    // Movement & Lerp Positions
-    public static float playerX = 0;
-    public static float playerY = 0;
-    public static float prevPlayerX = 0;
-    public static float prevPlayerY = 0;
-
-    private float velocityX = 0;
-    private float velocityY = 0;
-    private boolean isOnGround = false;
-
-    // Torso state
-    private static float currentBodyYaw = 0.0f;
-
-    // Responsive Physics Constants
-    private static final float GRAVITY = 0.42f;
-    private static final float JUMP_STRENGTH = -4.3f;
-    private static final float ACCELERATION = 0.85f;
-    private static final float FRICTION = 0.70f;
-    private static final float MAX_SPEED = 2.40f;
-    private static final int PLAYER_SCALE = 18;
+    // World Spawn Anchors
+    private static double startWorldX = Double.NaN;
+    private static double startWorldY = Double.NaN;
+    private static double startWorldZ = Double.NaN;
 
     // Key States
     private boolean keyLeft = false;
@@ -77,17 +62,13 @@ public class LockIn2DScreen extends Screen {
             this.minecraft.getTutorial().setStep(TutorialSteps.NONE);
             this.minecraft.getSoundManager().pause();
             this.minecraft.options.menuBackgroundBlurriness().set(0);
-        }
 
-        int guiX = (this.width - CHEST_W) / 2;
-        int guiY = (this.height - CHEST_H) / 2;
-        float gridStartY = guiY + 18;
-
-        if (playerX == 0 && playerY == 0) {
-            playerX = guiX + (CHEST_W / 2.0f);
-            playerY = gridStartY + (5 * SECTION_SIZE);
-            prevPlayerX = playerX;
-            prevPlayerY = playerY;
+            LocalPlayer player = this.minecraft.player;
+            if (player != null && Double.isNaN(startWorldX)) {
+                startWorldX = player.getX();
+                startWorldY = player.getY();
+                startWorldZ = player.getZ();
+            }
         }
     }
 
@@ -115,120 +96,32 @@ public class LockIn2DScreen extends Screen {
 
         if (this.minecraft != null) {
             this.minecraft.options.menuBackgroundBlurriness().set(0);
-            if (this.minecraft.player != null) {
-                LocalPlayer p = this.minecraft.player;
-                p.getAbilities().invulnerable = true;
-                p.setHealth(p.getMaxHealth());
-                p.getFoodData().setFoodLevel(20);
-            }
-        }
+            LocalPlayer player = this.minecraft.player;
+            if (player != null) {
+                player.getAbilities().invulnerable = true;
+                player.setHealth(player.getMaxHealth());
+                player.getFoodData().setFoodLevel(20);
 
-        updatePhysics();
-    }
-
-    private void updatePhysics() {
-        prevPlayerX = playerX;
-        prevPlayerY = playerY;
-
-        int guiX = (this.width - CHEST_W) / 2;
-        int guiY = (this.height - CHEST_H) / 2;
-        float gridStartX = guiX + 8;
-        float gridStartY = guiY + 18;
-
-        // 1. Horizontal Movement
-        if (keyLeft) velocityX -= ACCELERATION;
-        if (keyRight) velocityX += ACCELERATION;
-        velocityX *= FRICTION;
-        velocityX = Mth.clamp(velocityX, -MAX_SPEED, MAX_SPEED);
-
-        playerX += velocityX;
-
-        if (collides(playerX, playerY, gridStartX, gridStartY)) {
-            if (velocityX > 0) {
-                playerX = snapToBlockLeft(playerX, gridStartX) - (PLAYER_WIDTH / 2.0f);
-            } else if (velocityX < 0) {
-                playerX = snapToBlockRight(playerX, gridStartX) + (PLAYER_WIDTH / 2.0f);
-            }
-            velocityX = 0;
-        }
-
-        // Screen boundary limits
-        float minX = gridStartX + (PLAYER_WIDTH / 2.0f);
-        float maxX = gridStartX + (COLS * SECTION_SIZE) - (PLAYER_WIDTH / 2.0f);
-        if (playerX < minX) { playerX = minX; velocityX = 0; }
-        if (playerX > maxX) { playerX = maxX; velocityX = 0; }
-
-        // 2. Jump & Gravity
-        if (keyJump && isOnGround) {
-            velocityY = JUMP_STRENGTH;
-            isOnGround = false;
-        }
-
-        velocityY += GRAVITY;
-        playerY += velocityY;
-        isOnGround = false;
-
-        if (collides(playerX, playerY, gridStartX, gridStartY)) {
-            if (velocityY > 0) {
-                playerY = snapToBlockTop(playerY, gridStartY);
-                velocityY = 0;
-                isOnGround = true;
-            } else if (velocityY < 0) {
-                playerY = snapToBlockBottom(playerY, gridStartY) + PLAYER_HEIGHT;
-                velocityY = 0;
+                updateRealPlayerPhysics(player);
             }
         }
     }
 
-    private boolean collides(float px, float py, float gridX, float gridY) {
-        float pMinX = px - (PLAYER_WIDTH / 2.0f);
-        float pMaxX = px + (PLAYER_WIDTH / 2.0f);
-        float pMinY = py - PLAYER_HEIGHT;
-        float pMaxY = py;
+    private void updateRealPlayerPhysics(LocalPlayer player) {
+        Vec3 vel = player.getDeltaMovement();
+        double moveSpeed = 0.22;
+        double targetVX = 0;
 
-        int startCol = Mth.clamp((int) Math.floor((pMinX - gridX) / SECTION_SIZE), 0, COLS - 1);
-        int endCol   = Mth.clamp((int) Math.floor((pMaxX - gridX) / SECTION_SIZE), 0, COLS - 1);
-        int startRow = Mth.clamp((int) Math.floor((pMinY - gridY) / SECTION_SIZE), 0, ROWS - 1);
-        int endRow   = Mth.clamp((int) Math.floor((pMaxY - gridY) / SECTION_SIZE), 0, ROWS - 1);
+        if (keyLeft) targetVX = -moveSpeed;
+        if (keyRight) targetVX = moveSpeed;
 
-        for (int r = startRow; r <= endRow; r++) {
-            for (int c = startCol; c <= endCol; c++) {
-                if (TILE_GRID[r][c] != 0) {
-                    float bMinX = gridX + (c * SECTION_SIZE);
-                    float bMaxX = bMinX + SECTION_SIZE;
-                    float bMinY = gridY + (r * SECTION_SIZE);
-                    float bMaxY = bMinY + SECTION_SIZE;
+        // Apply real horizontal movement to actual player
+        player.setDeltaMovement(targetVX, vel.y, 0);
 
-                    if (pMaxX > bMinX && pMinX < bMaxX && pMaxY > bMinY && pMinY < bMaxY) {
-                        return true;
-                    }
-                }
-            }
+        // Real jump using vanilla physics
+        if (keyJump && player.onGround()) {
+            player.jumpFromGround();
         }
-        return false;
-    }
-
-    private float snapToBlockTop(float py, float gridY) {
-        int r = (int) Math.floor((py - gridY) / SECTION_SIZE);
-        return gridY + (r * SECTION_SIZE);
-    }
-
-    private float snapToBlockBottom(float py, float gridY) {
-        float pMinY = py - PLAYER_HEIGHT;
-        int r = (int) Math.floor((pMinY - gridY) / SECTION_SIZE);
-        return gridY + ((r + 1) * SECTION_SIZE);
-    }
-
-    private float snapToBlockLeft(float px, float gridX) {
-        float pMaxX = px + (PLAYER_WIDTH / 2.0f);
-        int c = (int) Math.floor((pMaxX - gridX) / SECTION_SIZE);
-        return gridX + (c * SECTION_SIZE);
-    }
-
-    private float snapToBlockRight(float px, float gridX) {
-        float pMinX = px - (PLAYER_WIDTH / 2.0f);
-        int c = (int) Math.floor((pMinX - gridX) / SECTION_SIZE);
-        return gridX + ((c + 1) * SECTION_SIZE);
     }
 
     @Override
@@ -255,7 +148,6 @@ public class LockIn2DScreen extends Screen {
             keyRight = true;
             return true;
         }
-        // Strict Jump: Spacebar only
         if (keyCode == GLFW.GLFW_KEY_SPACE) {
             keyJump = true;
             return true;
@@ -306,7 +198,7 @@ public class LockIn2DScreen extends Screen {
         float gridStartX = guiX + 8;
         float gridStartY = guiY + 18;
 
-        // Double Chest GUI
+        // Double Chest GUI Background
         guiGraphics.blit(CHEST_GUI_TEXTURE, guiX, guiY, 0, 0, CHEST_W, CHEST_H, 256, 256);
 
         // Tile Grid Grass Blocks
@@ -321,58 +213,29 @@ public class LockIn2DScreen extends Screen {
             }
         }
 
-        // Precise Frame Interpolation
-        float smoothX = Mth.lerp(partialTick, prevPlayerX, playerX);
-        float smoothY = Mth.lerp(partialTick, prevPlayerY, playerY);
-
         LocalPlayer player = Minecraft.getInstance().player;
-        if (player != null) {
-            // Rotations state backup
-            float oldYRot = player.getYRot();
-            float oldXRot = player.getXRot();
-            float oldYHeadRot = player.yHeadRot;
-            float oldYBodyRot = player.yBodyRotO;
+        if (player != null && !Double.isNaN(startWorldX)) {
+            // Calculate interpolated real world displacement
+            double lerpWorldX = Mth.lerp(partialTick, player.xo, player.getX());
+            double lerpWorldY = Mth.lerp(partialTick, player.yo, player.getY());
 
-            // Head and Body Mouse Tracking
-            float eyeY = smoothY - 21.0f;
-            float dx = mouseX - smoothX;
-            float dy = mouseY - eyeY;
+            double deltaX = lerpWorldX - startWorldX;
+            double deltaY = lerpWorldY - startWorldY;
 
-            float targetHeadYaw = (float) Math.toDegrees(Math.atan2(dx, 40));
-            float targetPitch = (float) Math.toDegrees(Math.atan2(-dy, 40));
+            // Map real-world displacement to chest grid coordinates
+            float baseChestX = guiX + (CHEST_W / 2.0f);
+            float baseChestY = gridStartY + (5 * SECTION_SIZE);
 
-            float headBodyDiff = Mth.wrapDegrees(targetHeadYaw - currentBodyYaw);
-            if (Math.abs(headBodyDiff) > 40.0f) {
-                currentBodyYaw += (headBodyDiff > 0 ? headBodyDiff - 40.0f : headBodyDiff + 40.0f);
-            }
-            currentBodyYaw = Mth.lerp(0.20f, currentBodyYaw, targetHeadYaw);
+            float smoothX = baseChestX + (float) (deltaX * SECTION_SIZE);
+            float smoothY = baseChestY - (float) (deltaY * SECTION_SIZE);
 
-            player.setYRot(currentBodyYaw);
-            player.setXRot(-targetPitch);
-            player.yHeadRot = targetHeadYaw;
-            player.yBodyRot = currentBodyYaw;
+            // Bounds clamping inside chest
+            float minX = gridStartX + 8.0f;
+            float maxX = gridStartX + (COLS * SECTION_SIZE) - 8.0f;
+            smoothX = Mth.clamp(smoothX, minX, maxX);
 
-            // Direct Bounding Box Coordinates (Fixes Invisibility)
-            int x1 = (int) (smoothX - 25);
-            int y1 = (int) (smoothY - 45);
-            int x2 = (int) (smoothX + 25);
-            int y2 = (int) smoothY;
-
-            InventoryScreen.renderEntityInInventoryFollowsMouse(
-                    guiGraphics,
-                    x1, y1, x2, y2,
-                    PLAYER_SCALE,
-                    0.0625f,
-                    (float) mouseX,
-                    (float) mouseY,
-                    player
-            );
-
-            // Restore Vanilla State
-            player.setYRot(oldYRot);
-            player.setXRot(oldXRot);
-            player.yHeadRot = oldYHeadRot;
-            player.yBodyRot = oldYBodyRot;
+            // Render REAL player model directly with full live walk/jump animations
+            renderLivePlayerModel(guiGraphics, smoothX, smoothY, 20, player, partialTick);
 
             // Elevated Nametag Render
             if (Config.SHOW_NAMETAG.get()) {
@@ -380,7 +243,7 @@ public class LockIn2DScreen extends Screen {
                 int textWidth = Minecraft.getInstance().font.width(name);
 
                 guiGraphics.pose().pushPose();
-                guiGraphics.pose().translate(smoothX, smoothY - 52.0f, 0.0f);
+                guiGraphics.pose().translate(smoothX, smoothY - 48.0f, 200.0f);
                 guiGraphics.pose().scale(0.60f, 0.60f, 1.0f);
 
                 int scaledX = -(textWidth / 2);
@@ -392,5 +255,39 @@ public class LockIn2DScreen extends Screen {
                 guiGraphics.pose().popPose();
             }
         }
+    }
+
+    private static void renderLivePlayerModel(GuiGraphics guiGraphics, float x, float y, int scale, LocalPlayer player, float partialTick) {
+        guiGraphics.pose().pushPose();
+        guiGraphics.pose().translate(x, y, 150.0F);
+        guiGraphics.pose().scale((float) scale, (float) scale, (float) scale);
+
+        // Align facing angle straight toward camera in 2D chest GUI
+        guiGraphics.pose().mulPose(Axis.ZP.rotationDegrees(180.0F));
+        guiGraphics.pose().mulPose(Axis.YP.rotationDegrees(180.0F));
+
+        Lighting.setupForEntityInInventory(new Quaternionf());
+
+        EntityRenderDispatcher dispatcher = Minecraft.getInstance().getEntityRenderDispatcher();
+        dispatcher.setRenderShadow(false);
+
+        MultiBufferSource.BufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
+
+        // Direct Entity Render Call (preserves real leg/arm walk animations & jump physics)
+        dispatcher.render(
+                player,
+                0.0, 0.0, 0.0,
+                0.0F,
+                partialTick,
+                guiGraphics.pose(),
+                bufferSource,
+                15728880
+        );
+
+        bufferSource.endBatch();
+        dispatcher.setRenderShadow(true);
+        Lighting.setupFor3DItems();
+
+        guiGraphics.pose().popPose();
     }
 }
