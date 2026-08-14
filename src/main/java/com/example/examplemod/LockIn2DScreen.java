@@ -249,13 +249,13 @@ public class LockIn2DScreen extends Screen {
             float maxX = gridStartX + (COLS * SECTION_SIZE) - 10.0f;
             smoothX = Mth.clamp(smoothX, minX, maxX);
 
-            // Bounding box for render
-            int x1 = (int) (smoothX - 25);
-            int y1 = (int) (smoothY - 45);
-            int x2 = (int) (smoothX + 25);
-            int y2 = (int) smoothY;
+            // Pure float sub-pixel bounds (NO INTEGER CASTING)
+            float x1 = smoothX - 25.0f;
+            float y1 = smoothY - 45.0f;
+            float x2 = smoothX + 25.0f;
+            float y2 = smoothY;
 
-            // Render live player with head cursor tracking and smooth walking animations
+            // Render live player with sub-pixel precision and cursor head tracking
             InventoryScreen.renderEntityInInventoryFollowsMouse(
                     guiGraphics,
                     x1, y1, x2, y2,
